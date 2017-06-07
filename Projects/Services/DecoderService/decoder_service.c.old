@@ -1,0 +1,470 @@
+/**
+ **************************************************************************************
+ * @file    decoder_service.c
+ * @brief   
+ *
+ * @author  halley
+ * @version V1.0.0
+ *
+ * $Created: 2016-6-29 13:06:47$
+ *
+ * @Copyright (C) 2016, Shanghai Mountain View Silicon Co.,Ltd. All rights reserved.
+ **************************************************************************************
+ */
+
+#include "type.h"
+#include "app_message.h"
+#include "rtos_api.h"
+#include "audio_utility.h"
+#include "audio_decoder.h"
+
+
+#include "app_config.h"
+#include "chip_info.h"
+#include "clk.h"
+
+#include "media_service.h"
+#include "tip_sound.h"
+
+/***************************************************************************************
+ *
+ * External defines
+ *
+ */
+ 
+#define DECODER_SERVICE_SIZE				1024
+#define DECODER_SERVICE_PRIO				3
+	
+#define DECODER_SERVICE_TIMEOUT				2//1	/* 1 ms */
+
+/***************************************************************************************
+ *
+ * Internal defines
+ *
+ */
+
+#define DCS_NUM_MESSAGE_QUEUE		4
+
+//#define DECODER_MEM_OFFSET			(VMEM_ADDR)
+
+
+typedef enum
+{
+	DecoderStateNone = 0,
+	DecoderStateReday,
+	DecoderStateInitilized,
+	DecoderStateDecoding,
+	DecoderStateWaitXrDone,
+	DecoderStateWaitTxDone,
+}DecoderState;
+
+typedef struct _DecoderServiceContext
+{
+	xTaskHandle 		taskHandle;
+	MessageHandle		msgHandle;
+	ServiceState		serviceState;
+
+
+	MemHandle			*memHandle;
+	DecoderState		decoderState;
+}DecoderServiceContext;
+
+/** Device servcie name*/
+const char decoderServiceName[]		= "DecoderService";
+
+/***************************************************************************************
+ *
+ * Internal varibles
+ *
+ */
+
+static DecoderServiceContext 		decoderServiceCt;
+#define DCS(x)						(decoderServiceCt.x)
+
+
+/***************************************************************************************
+ *
+ * Internal functions
+ *
+ */
+
+void audio_decoder_interrupt_callback(int32_t intterupt_type)
+{
+//	DBG("Interrupt %d\n", intterupt_type);
+//	DBG("%d\n", intterupt_type);
+/*
+	if(intterupt_type == 0)//XR_DONE
+	{
+		ReleaseAudioMutex();
+	}
+	
+	if(intterupt_type == 1)//TX_DONE
+	{
+		ReleaseAudioMutex();
+	}
+*/
+	ReleaseAudioMutex();
+}
+
+static int32_t DecoderServiceInit(void)
+{
+	memset(&decoderServiceCt, 0, sizeof(DecoderServiceContext));
+
+	NVIC_SetPriority(DECODER_IRQn, 2);
+
+	return 0;
+}
+
+
+static void DecoderServiceDeinit(void)
+{
+	MessageContext		msgSend;
+	MessageHandle		mainHandle;
+
+	/* Send message to main app */
+	mainHandle = GetMainMessageHandle();
+	msgSend.msgId		= MSG_SERVICE_DEINITED;
+	msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
+	MessageSend(mainHandle, &msgSend);
+
+	decoderServiceCt.serviceState = ServiceStateNone;
+}
+
+static void DecoderInit(uint16_t decoderMode)
+{
+	switch(decoderMode)
+	{
+		case MSG_PARAM_DECODER_MODE_WIFI:
+			{
+				int32_t			ret;
+				//AudioFormat		audioFormat;
+
+
+				decoderServiceCt.memHandle = GetWifiAudioPlayDecoderBuffer();
+				while(mv_msize(decoderServiceCt.memHandle) < 2*1024)
+				{
+					vTaskDelay(10);
+				}
+				//audioFormat = GetWifiAudioFormat();
+				do
+				{
+					ret = audio_decoder_initialize((uint8_t *)(VMEM_ADDR + DECODER_MEM_OFFSET), decoderServiceCt.memHandle, IO_TYPE_MEMORY, MP3_DECODER);
+					if(ret != RT_SUCCESS)
+					{
+						vTaskDelay(10);
+					}
+				}while(ret != RT_SUCCESS);
+
+				PcmTxSetPcmDataMode((PCM_DATA_MODE)audio_decoder->song_info->pcm_data_mode);
+				DacAdcSampleRateSet(audio_decoder->song_info->sampling_rate, USB_MODE);
+//				PcmFifoInitialize(PCM_FIFO_OFFSET, PCM_FIFO_SIZE, 0, 0);
+
+				DBG("samplerate = %d\n",audio_decoder->song_info->sampling_rate);
+
+				NVIC_EnableIRQ(DECODER_IRQn);
+
+				decoderServiceCt.decoderState = DecoderStateInitilized;
+			}
+			break;
+
+		case MSG_PARAM_DECODER_MODE_BT:
+			break;
+
+		case MSG_PARAM_DECODER_MODE_TIPSOUND:
+			{
+				int32_t			ret;
+				
+				decoderServiceCt.memHandle = GetTipSoundDecoderBuffer();
+				while(mv_msize(decoderServiceCt.memHandle) < 128)
+				{
+					vTaskDelay(10);
+				}
+				//audioFormat = GetWifiAudioFormat();
+
+				mv_mread_callback_set(TipSoundFillStreamCallback);
+				do
+				{
+					ret = audio_decoder_initialize((uint8_t *)(VMEM_ADDR + DECODER_MEM_OFFSET), decoderServiceCt.memHandle, IO_TYPE_MEMORY, MP3_DECODER);
+					if(ret != RT_SUCCESS)
+					{
+						vTaskDelay(10);
+					}
+				}while(ret != RT_SUCCESS);
+
+				PcmTxSetPcmDataMode((PCM_DATA_MODE)audio_decoder->song_info->pcm_data_mode);
+				DacAdcSampleRateSet(audio_decoder->song_info->sampling_rate, USB_MODE);
+//				PcmFifoInitialize(PCM_FIFO_OFFSET, PCM_FIFO_SIZE, 0, 0);
+
+				DBG("samplerate = %d\n",audio_decoder->song_info->sampling_rate);
+
+				NVIC_EnableIRQ(DECODER_IRQn);
+
+				decoderServiceCt.decoderState = DecoderStateInitilized;
+			}
+			break;
+
+		case MSG_PARAM_DECODER_MODE_MEDIA:
+			{
+				int32_t			ret;
+				void*			fileHandle;
+				DecoderType		type = MP3_DECODER;
+
+				fileHandle = (void*)GetPtMediaFile();
+				type = GetMediaDecoderType();
+				if(type == UNKOWN_DECODER)
+				{
+					DBG("[Decoder]: Decoder Type is UNKOWN \n");
+					break;
+				}
+				
+				do
+				{
+					ret = audio_decoder_initialize((uint8_t *)(VMEM_ADDR + DECODER_MEM_OFFSET), (void*)fileHandle, IO_TYPE_FILE, type);
+					if(ret != RT_SUCCESS)
+					{
+						vTaskDelay(10);
+
+						if(type == WMA_DECODER)
+						{
+							type = MP3_DECODER;
+						}
+
+						if(type == WAV_DECODER)
+						{
+							type = WMA_DECODER;
+						}
+					}
+				}while(ret != RT_SUCCESS);
+				DBG("[decoder service]:audio decoder initialize.\n");
+
+				PcmTxSetPcmDataMode((PCM_DATA_MODE)audio_decoder->song_info->pcm_data_mode);
+				DacAdcSampleRateSet(audio_decoder->song_info->sampling_rate, USB_MODE);
+//				PcmFifoInitialize(PCM_FIFO_OFFSET, PCM_FIFO_SIZE, 0, 0);
+
+				DBG("samplerate = %d\n",audio_decoder->song_info->sampling_rate);
+
+				NVIC_EnableIRQ(DECODER_IRQn);
+
+				decoderServiceCt.decoderState = DecoderStateInitilized;
+			}
+			break;
+
+			break;
+
+		default:
+			break;
+	}
+}
+
+static void DeocderDeinit(void)
+{
+	decoderServiceCt.decoderState = DecoderStateReday;
+}
+
+static void DecoderProcess(void)
+{
+
+	switch(decoderServiceCt.decoderState)
+	{
+		case DecoderStateInitilized:
+			decoderServiceCt.decoderState = DecoderStateDecoding;
+		case DecoderStateDecoding:
+			GetAudioMutex();
+			if(RT_SUCCESS == audio_decoder_decode())
+			{
+//				DBG("Deocder Success\n");
+				decoderServiceCt.decoderState = DecoderStateWaitXrDone;
+			}
+			else
+			{
+				DBG("Deocder error %d\n", audio_decoder_get_error_code());
+				ReleaseAudioMutex();
+			}
+			break;
+
+		case DecoderStateWaitXrDone:
+			if(audio_decoder_check_xr_done() == RT_YES)
+			{
+				int32_t		ret;
+
+				ret = SaveDecodedPcmData((int32_t *)audio_decoder->song_info->pcm0_addr,
+									audio_decoder->song_info->pcm_data_length,
+									audio_decoder->song_info->num_channels);
+
+				if(ret < 0)
+				{
+					//DBG("XR save err %d\n", ret);
+					return ;
+				}
+				audio_decoder_clear_xr_done();
+				decoderServiceCt.decoderState = DecoderStateDecoding;
+
+/*
+				if(PcmFifoIsEmpty())
+				{
+					DBG("Empty\n");
+				}
+				PcmTxTransferData((void *)audio_decoder->song_info->pcm0_addr, (void *)audio_decoder->song_info->pcm0_addr, audio_decoder->song_info->pcm_data_length);
+				decoderServiceCt.decoderState = DecoderStateWaitTxDone;
+*/
+			}
+			break;
+		case DecoderStateWaitTxDone:
+			{
+				if(audio_decoder_check_pcm_transfer_done() == RT_YES)
+				{
+					audio_decoder_clear_pcm_transfer_done();
+					decoderServiceCt.decoderState = DecoderStateDecoding;
+				}
+			}
+			break;
+		default:
+			break;
+	}
+
+}
+
+static void DecoderServiceEntrance(void * param)
+{
+	MessageContext		msgRecv;
+	MessageContext		msgSend;
+	MessageHandle		mainHandle;
+	bool msgRet;
+
+	/* register message handle */
+	decoderServiceCt.msgHandle = MessageRegister(DCS_NUM_MESSAGE_QUEUE);
+
+	decoderServiceCt.serviceState = ServiceStateReady;
+
+	/* Send message to main app */
+	mainHandle = GetMainMessageHandle();
+	msgSend.msgId		= MSG_SERVICE_INITED;
+	msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
+	MessageSend(mainHandle, &msgSend);
+
+
+	while(1)
+	{
+		msgRet = MessageRecv(decoderServiceCt.msgHandle, &msgRecv, 0);
+		vTaskDelay(DECODER_SERVICE_TIMEOUT);
+
+		if(msgRet)
+		{
+		switch(msgRecv.msgId)
+		{
+			case MSG_SERVICE_START:
+				if(decoderServiceCt.serviceState == ServiceStateReady)
+				{
+					DBG("Decoder service start %d\n",msgRecv.msgParams);
+					DecoderInit(msgRecv.msgParams);
+
+					decoderServiceCt.serviceState = ServiceStateRunning;
+					msgSend.msgId		= MSG_SERVICE_STARTED;
+					msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;					
+					MessageSend(mainHandle, &msgSend);
+				}
+				break;
+			case MSG_SERVICE_STOP:
+				if(decoderServiceCt.serviceState == ServiceStateRunning)
+				{
+					//DecoderDeinit();
+				
+					decoderServiceCt.serviceState = ServiceStateReady;
+					msgSend.msgId		= MSG_SERVICE_STOPPED;
+					msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
+					MessageSend(mainHandle, &msgSend);
+				}
+
+				break;
+			default:
+				break;
+		}
+		}
+
+		if(decoderServiceCt.serviceState == ServiceStateRunning)
+			DecoderProcess();
+
+	}
+}
+
+
+/***************************************************************************************
+ *
+ * APIs
+ *
+ */
+
+
+/**
+ * @brief
+ *		Get message handle
+ * @param
+ * 	 NONE
+ * @return  
+ */
+MessageHandle GetDecoderMessageHandle(void)
+{
+	return decoderServiceCt.msgHandle;
+}
+
+ServiceState GetDecoderServiceState(void)
+{
+	return decoderServiceCt.serviceState;
+}
+
+/**
+ * @brief
+ *		
+ * @param
+ * 	 NONE
+ * @return  
+ */
+int32_t DecoderServiceCreate(void)
+{
+	DecoderServiceInit();
+	xTaskCreate(DecoderServiceEntrance, decoderServiceName, DECODER_SERVICE_SIZE, NULL, DECODER_SERVICE_PRIO, &decoderServiceCt.taskHandle);
+	return 0;
+}
+
+
+void DecoderServiceStart(void)
+{
+	MessageContext		msgSend;
+
+	msgSend.msgId		= MSG_SERVICE_START;
+	msgSend.msgParams	= NULL;
+	MessageSend(decoderServiceCt.msgHandle, &msgSend);
+}
+
+/**
+ * @brief
+ *		Exit audio core service.
+ * @param
+ * 	 NONE
+ * @return  
+ */
+void DecoderServiceStop(void)
+{
+	MessageContext		msgSend;
+
+	msgSend.msgId		= MSG_SERVICE_STOP;
+	msgSend.msgParams	= NULL;
+	MessageSend(decoderServiceCt.msgHandle, &msgSend);
+}
+
+
+/**
+ * @brief
+ *		
+ * @param
+ * 	 NONE
+ * @return  
+ */
+void DecoderServiceKill(void)
+{
+	DecoderServiceDeinit();
+	vTaskDelete(decoderServiceCt.taskHandle);
+}
+
+
+
