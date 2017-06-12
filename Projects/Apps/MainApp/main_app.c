@@ -76,6 +76,8 @@ static int32_t MainAppInit(void)
 {
 	memset(&mainAppCt, 0, sizeof(MainAppContext));
 
+	MAIN_APP(msgHandle) = MessageRegister(MAIN_NUM_MESSAGE_QUEUE);
+
 	return 0;
 }
 
@@ -87,7 +89,7 @@ static void CreateService(void)
 	DeviceServiceCreate();
 //	DecoderServiceCreate();
 //	AudioCoreServiceCreate();
-//	WifiServiceCreate();
+	WifiServiceCreate();
 }
 
 static void ServiceCreated(uint16_t msgParams)
@@ -163,7 +165,6 @@ static void MainAppTaskEntrance(void * param)
 	MessageContext		msg;
 	bool msgRet;
 
-	MAIN_APP(msgHandle) = MessageRegister(MAIN_NUM_MESSAGE_QUEUE);
 
 	CreateService();
 

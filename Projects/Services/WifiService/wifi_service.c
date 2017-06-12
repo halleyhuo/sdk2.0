@@ -38,7 +38,7 @@ extern uint8_t *memp_memory;
 #define WIFI_SERVICE_SIZE				1024
 #define WIFI_SERVICE_PRIO				3
 	
-#define WIFI_SERVICE_TIMEOUT				1	/* 1 ms */
+#define WIFI_SERVICE_TIMEOUT			1	/* 1 ms */
 
 #define WS_NUM_MESSAGE_QUEUE			10
 
@@ -63,6 +63,7 @@ typedef struct _WifiServiceContext
 {
 	xTaskHandle 		taskHandle;
 	MessageHandle		msgHandle;
+	MessageHandle		parentMsgHandle;
 	ServiceState		serviceState;
 }WifiServiceContext;
 
@@ -82,7 +83,10 @@ static WifiServiceContext		wifiServiceCt;
  * Internal functions
  *
  */
-	
+static __inline void SetWifiSeviceState(ServiceState state)
+{
+	wifiServiceCt.serviceState = state;
+}
 
 static void SelectWifiInSdioMode(void)
 {
@@ -92,6 +96,19 @@ static void SelectWifiInSdioMode(void)
 	GpioClrRegOneBit(GPIO_C_OUT,GPIOC3);
 }
 
+static bool WS_Init(MessageHandle parentMsgHandle)
+{
+	memset(&wifiServiceCt, 0, sizeof(WifiServiceContext));
+
+	wifiServiceCt.parentMsgHandle = parentMsgHandle;
+	wifiServiceCt.msgHandle = MessageRegister(WS_NUM_MESSAGE_QUEUE);
+	SetWifiSeviceState(ServiceStateCreating);
+	
+	memp_memory = pvPortMalloc(MEMP_MEMORY_LEN);
+	NVIC_SetPriority(GPIO_IRQn, GPIO_INT_PRIO);
+	SelectWifiInSdioMode();
+	ssv6xxx_dev_init(0,NULL);
+}
 
 static void WifiDeviceInit(void)
 {
@@ -121,15 +138,12 @@ static void WifiServiceEntrance(void * param)
 
 
 	/* register message handle */
-	wifiServiceCt.msgHandle = MessageRegister(WS_NUM_MESSAGE_QUEUE);
-
-	wifiServiceCt.serviceState = ServiceStateReady;
+	SetWifiSeviceState(ServiceStateReady);
 
 	/* Send message to main app */
-	mainHandle = GetMainMessageHandle();
 	msgSend.msgId		= MSG_SERVICE_CREATED;
 	msgSend.msgParams	= MSG_PARAM_WIFI_SERVICE;
-	MessageSend(mainHandle, &msgSend);
+	MessageSend(wifiServiceCt.parentMsgHandle, &msgSend);
 
 	while(1)
 	{
@@ -208,7 +222,7 @@ ServiceState GetWifiServiceState(void)
 
 int32_t WifiServiceCreate(MessageHandle parentMsgHandle)
 {
-
+	WS_Init(parentMsgHandle);
 	xTaskCreate((TaskFunction_t)InitSSVDeviceTask,
 				"InitSSVDeviceTask",
 				INIT_SSV_TASK_STACK_SIZE,
