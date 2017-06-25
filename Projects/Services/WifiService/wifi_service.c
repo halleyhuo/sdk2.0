@@ -133,7 +133,10 @@ static WifiServiceContext		wifiServiceCt;
  * Internal functions
  *
  */
-	
+static __inline void SetWifiSeviceState(ServiceState state)
+{
+	wifiServiceCt.serviceState = state;
+}
 
 static void SelectWifiInSdioMode(void)
 {
@@ -142,6 +145,7 @@ static void SelectWifiInSdioMode(void)
 	GpioClrRegOneBit(GPIO_C_OUT,GPIOC3);
 }
 
+<<<<<<< HEAD
 /***************************************************************************************
  *
  * wifi ConnectService task
@@ -156,6 +160,20 @@ static MessageHandle GetWifiConnectServiceMessageHandle(void)
 static ServiceState GetWifiConnectServiceState(void)
 {
 	return wifiServiceCt.connectServiceState;
+=======
+static bool WS_Init(MessageHandle parentMsgHandle)
+{
+	memset(&wifiServiceCt, 0, sizeof(WifiServiceContext));
+
+	wifiServiceCt.parentMsgHandle = parentMsgHandle;
+	wifiServiceCt.msgHandle = MessageRegister(WS_NUM_MESSAGE_QUEUE);
+	SetWifiSeviceState(ServiceStateCreating);
+	
+	memp_memory = pvPortMalloc(MEMP_MEMORY_LEN);
+	NVIC_SetPriority(GPIO_IRQn, GPIO_INT_PRIO);
+	SelectWifiInSdioMode();
+	ssv6xxx_dev_init(0,NULL);
+>>>>>>> d4a02872d889f4a0b856006f787f29d8dcf9c89d
 }
 
 static void SetWifiConnectServiceState(ServiceState state)
@@ -219,9 +237,18 @@ static void WifiConnectServiceEntrance(void)
 	}
 	
 	/* register message handle */
+<<<<<<< HEAD
 	wifiServiceCt.connectServiceMsgHandle = MessageRegister(WS_NUM_MESSAGE_QUEUE);
 
 	wifiServiceCt.wifiConnectServiceContext.connectState = WIFI_IDLE;
+=======
+	SetWifiSeviceState(ServiceStateReady);
+
+	/* Send message to main app */
+	msgSend.msgId		= MSG_SERVICE_CREATED;
+	msgSend.msgParams	= MSG_PARAM_WIFI_SERVICE;
+	MessageSend(wifiServiceCt.parentMsgHandle, &msgSend);
+>>>>>>> d4a02872d889f4a0b856006f787f29d8dcf9c89d
 
 	wifiServiceCt.connectServiceState = ServiceStateReady;
 	wifiServiceHandle	= GetWifiMessageHandle();
@@ -653,6 +680,7 @@ ServiceState GetWifiServiceState(void)
 
 int32_t WifiServiceCreate(MessageHandle parentMsgHandle)
 {
+<<<<<<< HEAD
 	WifiService_Init(parentMsgHandle);
 	xTaskCreate(WifiServiceEntrance, 
 				wifiServiceName, 
@@ -660,6 +688,15 @@ int32_t WifiServiceCreate(MessageHandle parentMsgHandle)
 				NULL, 
 				WIFI_SERVICE_PRIO, 
 				&wifiServiceCt.taskHandle);
+=======
+	WS_Init(parentMsgHandle);
+	xTaskCreate((TaskFunction_t)InitSSVDeviceTask,
+				"InitSSVDeviceTask",
+				INIT_SSV_TASK_STACK_SIZE,
+				NULL,
+				INIT_SSV_TASK_PRIO,
+				NULL );
+>>>>>>> d4a02872d889f4a0b856006f787f29d8dcf9c89d
 	return 0;
 }
 

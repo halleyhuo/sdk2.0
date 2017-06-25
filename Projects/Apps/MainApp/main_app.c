@@ -89,7 +89,11 @@ static void CreateService(void)
 	DeviceServiceCreate();
 //	DecoderServiceCreate();
 //	AudioCoreServiceCreate();
+<<<<<<< HEAD
 	WifiServiceCreate(mainAppCt.msgHandle);
+=======
+	WifiServiceCreate();
+>>>>>>> d4a02872d889f4a0b856006f787f29d8dcf9c89d
 }
 
 static void ServiceCreated(uint16_t msgParams)
