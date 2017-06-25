@@ -10,11 +10,14 @@
 #include <lwip/ip_addr.h>
 #include "lwip/udp.h"
 #include "lwip/igmp.h"
+#include "wifi_porting.h"
 
 extern u16 g_SconfigChannelMask;
 extern u32 g_sconfig_solution;
 
-void Swtich2STAmode(void)
+struct AP_RECORD *pApJoiningRecord = NULL;
+
+void Switch2STAmode(void)
 {
 	Sta_setting sta;
 	MEMSET(&sta, 0 , sizeof(Sta_setting));
@@ -30,7 +33,7 @@ void Swtich2STAmode(void)
 	}
 }
 
-int16_t  Swtich2SCONFIGmode(void)
+int16_t Switch2SCONFIGmode(void)
 {
 	uint16_t channel = 0x3ffe;
 	Sta_setting sta;
@@ -52,10 +55,10 @@ int16_t  Swtich2SCONFIGmode(void)
 		return -1;
 	}
 
-		return 1;
+	return 1;
 }
 
-void PrintScanWifiResult(void)
+void PrintfScanWifiResult(void)
 {
 	u32 i=0,AP_cnt;
 	s32     pairwise_cipher_index=0,group_cipher_index=0;
@@ -144,8 +147,7 @@ void LeaveWifi(void)
 	}
 }
 
-
-void JoinWifi(void)
+void JoinWifi(const uint8_t *ssidName, const uint8_t *ssidPassword)
 {
 	int ret = -1;
 	wifi_sta_join_cfg *join_cfg = NULL;
@@ -154,9 +156,9 @@ void JoinWifi(void)
 	
 	memset(join_cfg,0,sizeof(wifi_sta_join_cfg));
 	
-	memcpy(join_cfg->ssid.ssid, "MV-Wireless4",12);
-	join_cfg->ssid.ssid_len=12;
-	memcpy(join_cfg->password, "1qaz2wsx",8);
+	memcpy(join_cfg->ssid.ssid, ssidName, strlen(ssidName));
+	join_cfg->ssid.ssid_len = strlen(ssidName);
+	memcpy(join_cfg->password, ssidPassword, strlen(ssidPassword));
 
 	ret = netmgr_wifi_join_async(join_cfg);
 	if (ret != 0)
@@ -176,10 +178,82 @@ int16_t GetNetifStatus(void)
 	{
 		return netif_is_up(netif);
 	}
+	return 0;
+}
+
+/**
+* @brief
+* 	 Get IP address
+*
+* @param
+*
+* @return
+* 	 Ip address
+*/
+uint32_t GetIpAdress(void)
+{
+	ipinfo info;
+	
+	netmgr_ipinfo_get(WLAN_IFNAME, &info);
+	return info.ipv4;
+}
+
+uint8_t FindApInWifiList(uint8_t n, uint32_t ap_count, struct ssv6xxx_ieee80211_bss *ap_list)
+{
+	u32 i=0;
+	uint8_t ret=0;
+	
+	if((ap_list==NULL) || (ap_count==0))
+	{
+		LOG_PRINTF("AP list empty!\r\n");
 		return 0;
+	}
+	for (i=0; i<ap_count; i++)
+	{
+		if(ap_list[i].channel_id!= 0)
+		{
+			if(pApJoiningRecord->ssid_pwd[n].ssid_len == ap_list[i].ssid.ssid_len)
+			{
+				if(memcmp((void *)&pApJoiningRecord->ssid_pwd[n].ssid[0], (void*)ap_list[i].ssid.ssid, pApJoiningRecord->ssid_pwd[n].ssid_len) == 0)
+				{
+					ret = 1;
+					break;
+				}
+			}
+		}
+	}
+	return ret;
 }
 
 
+void SconfigScanDone (void *data)
+{
+	struct resp_evt_result *sconfig_done = (struct resp_evt_result *)data;
+	if(sconfig_done->u.sconfig_done.result_code==0) {
+		if(pApJoiningRecord->total_items == 0) {
+			pApJoiningRecord->current_item = 0;
+		}
+		else {
+			pApJoiningRecord->current_item  += 1;
+			pApJoiningRecord->current_item %= TOTAL_WIFI;
+		}
+	
+		if(pApJoiningRecord->total_items < TOTAL_WIFI)
+		{
+			pApJoiningRecord->total_items++;
+		}
+		memset(pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].ssid,0,SSID_LEN);
+		memcpy((void*)pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].ssid, (void*)sconfig_done->u.sconfig_done.ssid, sconfig_done->u.sconfig_done.ssid_len);
+		pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].ssid_len = sconfig_done->u.sconfig_done.ssid_len;
+		memset(pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].password,0,PASSWORD_LEN);
+		sprintf(pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].password,"%s",sconfig_done->u.sconfig_done.pwd);
+		pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].password_len =strlen(pApJoiningRecord->ssid_pwd[pApJoiningRecord->current_item].password);
+		set_sconfig_flag(1);
+	}
+	return;
+}
+
+#if 0
 void _host_event_handler(u32 evt_id, void *data, s32 len)
 {
 	switch (evt_id) {
@@ -266,3 +340,6 @@ void _host_event_handler(u32 evt_id, void *data, s32 len)
 		break;
 	}
 } // end of - host_event_handler -
+#endif
+
+

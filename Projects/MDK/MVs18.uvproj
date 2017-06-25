@@ -361,7 +361,7 @@
               <MiscControls>--gnu</MiscControls>
               <Define>__CORTEX_M3, __CC_ARM</Define>
               <Undefine></Undefine>
-              <IncludePath>..\..\Driver\driver\inc;..\..\MiddleWare\Audio\inc;..\..\MiddleWare\Bluetooth\inc;..\..\MiddleWare\CharacterEncoding\inc;..\..\MiddleWare\FS\inc;..\..\MiddleWare\MVUtils\inc;..\..\MiddleWare\OS;..\..\MiddleWare\OS\FreeRTOS\Source\include;..\..\MiddleWare\OS\FreeRTOS\Source\portable\RVDS\ARM_CM3;..\..\MiddleWare\User\inc;..\..\MiddleWare\FlashFS\INCLUDE;..\Inc;..\..\MiddleWare\Wifi\host;..\..\MiddleWare\Wifi\host\include;..\..\MiddleWare\Wifi\host\include\priv;..\..\MiddleWare\Wifi\host\include\priv\hw;..\..\MiddleWare\Wifi\host\os_wrapper\freeRTOS;..\..\MiddleWare\Wifi\host\platform\mvsilicon;..\..\MiddleWare\Wifi\host\app;..\..\MiddleWare\Wifi\host\app\cli;..\..\MiddleWare\Wifi\host\drv;..\..\MiddleWare\Wifi\host\drv\sdio;..\..\MiddleWare\Wifi\host\ap;..\..\MiddleWare\Wifi\host\ap\common;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include\lwip;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\ports\icomm;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\ports\icomm\include;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include\ipv4;..\..\MiddleWare\Wifi\host\app\netapp;..\..\MiddleWare\Wifi\host\app\netapp\udhcp;..\..\MiddleWare\Wifi\host\app\netmgr;..\..\MiddleWare\Wifi\host\app\netmgr\SmartConfig;..\..\MiddleWare\Wifi\host\app\netmgr\SmartConfig\iComm\core;..\..\MiddleWare\Wifi\host\app\netapp\iperf3.0\src;..\..\MiddleWare\Wifi\host\core;..\..\MiddleWare\Wifi\host\netstack_wrapper\icomm_lwIP;..\..\MiddleWare\Wifi\mvs;..\..\MiddleWare\WxCloud;..\..\MiddleWare\FlashFS</IncludePath>
+              <IncludePath>..\..\Driver\driver\inc;..\..\MiddleWare\Audio\inc;..\..\MiddleWare\Bluetooth\inc;..\..\MiddleWare\CharacterEncoding\inc;..\..\MiddleWare\FS\inc;..\..\MiddleWare\MVUtils\inc;..\..\MiddleWare\OS;..\..\MiddleWare\OS\FreeRTOS\Source\include;..\..\MiddleWare\OS\FreeRTOS\Source\portable\RVDS\ARM_CM3;..\..\MiddleWare\User\inc;..\..\MiddleWare\FlashFS\INCLUDE;..\Inc;..\..\MiddleWare\Wifi\host;..\..\MiddleWare\Wifi\host\include;..\..\MiddleWare\Wifi\host\include\priv;..\..\MiddleWare\Wifi\host\include\priv\hw;..\..\MiddleWare\Wifi\host\os_wrapper\freeRTOS;..\..\MiddleWare\Wifi\host\platform\mvsilicon;..\..\MiddleWare\Wifi\host\app;..\..\MiddleWare\Wifi\host\app\cli;..\..\MiddleWare\Wifi\host\drv;..\..\MiddleWare\Wifi\host\drv\sdio;..\..\MiddleWare\Wifi\host\ap;..\..\MiddleWare\Wifi\host\ap\common;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include\lwip;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\ports\icomm;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\ports\icomm\include;..\..\MiddleWare\Wifi\host\tcpip\lwip-1.4.0\src\include\ipv4;..\..\MiddleWare\Wifi\host\app\netapp;..\..\MiddleWare\Wifi\host\app\netapp\udhcp;..\..\MiddleWare\Wifi\host\app\netmgr;..\..\MiddleWare\Wifi\host\app\netmgr\SmartConfig;..\..\MiddleWare\Wifi\host\app\netmgr\SmartConfig\iComm\core;..\..\MiddleWare\Wifi\host\app\netapp\iperf3.0\src;..\..\MiddleWare\Wifi\host\core;..\..\MiddleWare\Wifi\host\netstack_wrapper\icomm_lwIP;..\..\MiddleWare\Wifi\mvs;..\..\MiddleWare\WxCloud;..\..\MiddleWare\FlashFS;..\..\MiddleWare\Wifi\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -942,11 +942,6 @@
               <FilePath>..\..\MiddleWare\Wifi\host\ssv_frame.c</FilePath>
             </File>
             <File>
-              <FileName>init_wifi.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\MiddleWare\Wifi\mvs\init_wifi.c</FilePath>
-            </File>
-            <File>
               <FileName>resource_wifi_fw.s</FileName>
               <FileType>2</FileType>
               <FilePath>..\..\MiddleWare\Wifi\mvs\resource_wifi_fw.s</FilePath>
@@ -957,57 +952,19 @@
               <FilePath>..\..\MiddleWare\Wifi\mvs\sdcard.c</FilePath>
             </File>
             <File>
-              <FileName>smart_cfg_net.c</FileName>
+              <FileName>wifi_api.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\MiddleWare\Wifi\mvs\smart_cfg_net.c</FilePath>
+              <FilePath>..\..\MiddleWare\Wifi\src\wifi_api.c</FilePath>
+            </File>
+            <File>
+              <FileName>wifi_auido_api.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\MiddleWare\Wifi\src\wifi_auido_api.c</FilePath>
             </File>
             <File>
               <FileName>wifi_porting.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\MiddleWare\Wifi\mvs\wifi_porting.c</FilePath>
-              <FileOption>
-                <CommonProperty>
-                  <UseCPPCompiler>2</UseCPPCompiler>
-                  <RVCTCodeConst>0</RVCTCodeConst>
-                  <RVCTZI>0</RVCTZI>
-                  <RVCTOtherData>0</RVCTOtherData>
-                  <ModuleSelection>0</ModuleSelection>
-                  <IncludeInBuild>0</IncludeInBuild>
-                  <AlwaysBuild>2</AlwaysBuild>
-                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
-                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
-                  <PublicsOnly>2</PublicsOnly>
-                  <StopOnExitCode>11</StopOnExitCode>
-                  <CustomArgument></CustomArgument>
-                  <IncludeLibraryModules></IncludeLibraryModules>
-                  <ComprImg>1</ComprImg>
-                </CommonProperty>
-                <FileArmAds>
-                  <Cads>
-                    <interw>2</interw>
-                    <Optim>0</Optim>
-                    <oTime>2</oTime>
-                    <SplitLS>2</SplitLS>
-                    <OneElfS>2</OneElfS>
-                    <Strict>2</Strict>
-                    <EnumInt>2</EnumInt>
-                    <PlainCh>2</PlainCh>
-                    <Ropi>2</Ropi>
-                    <Rwpi>2</Rwpi>
-                    <wLevel>0</wLevel>
-                    <uThumb>2</uThumb>
-                    <uSurpInc>2</uSurpInc>
-                    <uC99>2</uC99>
-                    <useXO>2</useXO>
-                    <VariousControls>
-                      <MiscControls></MiscControls>
-                      <Define></Define>
-                      <Undefine></Undefine>
-                      <IncludePath></IncludePath>
-                    </VariousControls>
-                  </Cads>
-                </FileArmAds>
-              </FileOption>
+              <FilePath>..\..\MiddleWare\Wifi\src\wifi_porting.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1015,14 +972,19 @@
           <GroupName>Middleware/WxCloud</GroupName>
           <Files>
             <File>
+              <FileName>libwxcloud.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\MiddleWare\WxCloud\libwxcloud.lib</FilePath>
+            </File>
+            <File>
               <FileName>wxcloud_porting.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\MiddleWare\WxCloud\wxcloud_porting.c</FilePath>
             </File>
             <File>
-              <FileName>libwxcloud.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\MiddleWare\WxCloud\libwxcloud.lib</FilePath>
+              <FileName>wxcloud_api.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\MiddleWare\WxCloud\wxcloud_api.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1209,97 +1171,6 @@
               <FileName>wifi_service.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Services\WifiService\wifi_service.c</FilePath>
-              <FileOption>
-                <CommonProperty>
-                  <UseCPPCompiler>2</UseCPPCompiler>
-                  <RVCTCodeConst>0</RVCTCodeConst>
-                  <RVCTZI>0</RVCTZI>
-                  <RVCTOtherData>0</RVCTOtherData>
-                  <ModuleSelection>0</ModuleSelection>
-                  <IncludeInBuild>0</IncludeInBuild>
-                  <AlwaysBuild>2</AlwaysBuild>
-                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
-                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
-                  <PublicsOnly>2</PublicsOnly>
-                  <StopOnExitCode>11</StopOnExitCode>
-                  <CustomArgument></CustomArgument>
-                  <IncludeLibraryModules></IncludeLibraryModules>
-                  <ComprImg>1</ComprImg>
-                </CommonProperty>
-                <FileArmAds>
-                  <Cads>
-                    <interw>2</interw>
-                    <Optim>0</Optim>
-                    <oTime>2</oTime>
-                    <SplitLS>2</SplitLS>
-                    <OneElfS>2</OneElfS>
-                    <Strict>2</Strict>
-                    <EnumInt>2</EnumInt>
-                    <PlainCh>2</PlainCh>
-                    <Ropi>2</Ropi>
-                    <Rwpi>2</Rwpi>
-                    <wLevel>0</wLevel>
-                    <uThumb>2</uThumb>
-                    <uSurpInc>2</uSurpInc>
-                    <uC99>2</uC99>
-                    <useXO>2</useXO>
-                    <VariousControls>
-                      <MiscControls></MiscControls>
-                      <Define></Define>
-                      <Undefine></Undefine>
-                      <IncludePath></IncludePath>
-                    </VariousControls>
-                  </Cads>
-                </FileArmAds>
-              </FileOption>
-            </File>
-            <File>
-              <FileName>wx_speech_app.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Apps\WifiAPP\wx_speech_app.c</FilePath>
-              <FileOption>
-                <CommonProperty>
-                  <UseCPPCompiler>2</UseCPPCompiler>
-                  <RVCTCodeConst>0</RVCTCodeConst>
-                  <RVCTZI>0</RVCTZI>
-                  <RVCTOtherData>0</RVCTOtherData>
-                  <ModuleSelection>0</ModuleSelection>
-                  <IncludeInBuild>0</IncludeInBuild>
-                  <AlwaysBuild>2</AlwaysBuild>
-                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
-                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
-                  <PublicsOnly>2</PublicsOnly>
-                  <StopOnExitCode>11</StopOnExitCode>
-                  <CustomArgument></CustomArgument>
-                  <IncludeLibraryModules></IncludeLibraryModules>
-                  <ComprImg>1</ComprImg>
-                </CommonProperty>
-                <FileArmAds>
-                  <Cads>
-                    <interw>2</interw>
-                    <Optim>0</Optim>
-                    <oTime>2</oTime>
-                    <SplitLS>2</SplitLS>
-                    <OneElfS>2</OneElfS>
-                    <Strict>2</Strict>
-                    <EnumInt>2</EnumInt>
-                    <PlainCh>2</PlainCh>
-                    <Ropi>2</Ropi>
-                    <Rwpi>2</Rwpi>
-                    <wLevel>0</wLevel>
-                    <uThumb>2</uThumb>
-                    <uSurpInc>2</uSurpInc>
-                    <uC99>2</uC99>
-                    <useXO>2</useXO>
-                    <VariousControls>
-                      <MiscControls></MiscControls>
-                      <Define></Define>
-                      <Undefine></Undefine>
-                      <IncludePath></IncludePath>
-                    </VariousControls>
-                  </Cads>
-                </FileArmAds>
-              </FileOption>
             </File>
             <File>
               <FileName>wxcloud_service.c</FileName>
@@ -1363,6 +1234,11 @@
               <FileName>wifi_audio_service.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Services\wifi_audio_service.c</FilePath>
+            </File>
+            <File>
+              <FileName>wx_speech_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Services\WxSpeechService\wx_speech_service.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -57,7 +57,6 @@ typedef struct _WifiAudioServiceContext
 	xTaskHandle 		taskHandle;
 	MessageHandle		msgHandle;
 	MessageHandle		parentMsgHandle;
-	
 	ServiceState		state;
 
 	int16_t 			sock;
@@ -262,7 +261,7 @@ static void WAS_Run(void)
 static void WAS_ProcessMsgStart(uint16_t msgParams)
 {
 	MessageContext		msgSend;
-	
+
 	WAS(state) = ServiceStateRunning;
 
 	msgSend.msgId = MSG_SERVICE_STARTED;
@@ -362,9 +361,9 @@ ServiceState GetWifiAudioServiceState(void)
 	return WAS(state);
 }
 
-void WifiAudioServiceConnect(const char * url)
+void WifiAudioServiceConnect(const char * url, uint16_t urlLen)
 {
-	strcpy(WAS(url), url);
+	strncpy(WAS(url), url, urlLen);
 }
 
 MemHandle * GetWifiAudioServiceBuf(void)

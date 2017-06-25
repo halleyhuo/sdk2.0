@@ -18,7 +18,7 @@
 #define __WIFI_API_H__
 
 #include "type.h"
-#include "socket.h"
+#include "sockets.h"
 
 
 #define IP_ADDRESS_LENGTH				16
@@ -81,7 +81,7 @@ WifiStatus WifiConnectURL(uint8_t *url, int32_t *sock, int32_t port);
  * @return
  *		WIFI_STATUS_SUCCESS or WIFI_STATUS_FAILED
  */
-WifiStatus WifiConnectIP(uint8_t *ipAddr, int32_t *sock, int32_t port);
+WifiStatus WifiConnectIP(IP_ADDR *ipAddr, int32_t *sock, int32_t port);
 
 
 /**
@@ -129,7 +129,8 @@ int32_t WifiSend(int32_t socket, char *buf, uint32_t size, uint32_t timeout);
  * @return
  *		WIFI_STATUS_SUCCESS or WIFI_STATUS_FAILED.
  */
-WifiStatus  ResolveIP(uint8_t *url, uint8_t *result);
+WifiStatus  ResolveIP(uint8_t *url, IP_ADDR *result);
+
 
 /**
  * @brief

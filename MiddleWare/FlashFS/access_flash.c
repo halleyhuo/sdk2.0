@@ -6,12 +6,12 @@
 #include "spi_flash.h"
 #include "debug.h"
 #include "gpio.h"
-//#include "sys_app.h"
+#include "sys_app.h"
 //#include "wifi_audio.h"
 #include "timeout.h"
 //#include "wakeup.h"
 #include "file.h"
-#include "smart_cfg_net.h"
+#include "wifi_porting.h"
 
 //extern PLAY_RECORD *WifiaudioPlayRecord;
 //extern uint8_t Volume;
@@ -29,11 +29,11 @@ char VolumeRecordFileName[] = "VolumeRecordFile.txt";
 FILE* pGetDeviceUserFile;
 char GetDeviceUserFileName[] = "GetDeviceUserFileName.txt";
 
-FILE* pMediaFile;
-char MediaFileName[] = "MediaFileName.txt";
+FILE* pWxSpeechFile;
+char WxSpeechFileName[] = "WxSpeechFileName.txt";
 
-FILE* pMediaIDFile;
-char MediaIDFileName[] = "MediaIDFileName.txt";
+FILE* pWxSpeechIdFile;
+char WxSpeechIdFileName[] = "WxSpeechIdFileName.txt";
 
 FILE* pNetRecordFile;
 char NetRecordFileName[] = "NetRecordFileName.txt";
@@ -76,12 +76,14 @@ int32_t InitFlashFS(void)
     return ret;
 }
 
+/*
+ * Net infor record
+ */
+extern struct AP_RECORD *pApJoiningRecord;
 void BurnNetRecord(void)
 {
 	pApJoiningRecord->flag = AP_RECORD_FLAG;
-//	SpiFlashInfoInit();
-//	FlashUnlock();
-
+	
 	pNetRecordFile = Fopen(NetRecordFileName, "w");
 	Fwrite(pApJoiningRecord, sizeof(struct AP_RECORD), 1, pNetRecordFile);
 	Fclose( pNetRecordFile );
@@ -89,9 +91,6 @@ void BurnNetRecord(void)
 
 void EraseLinkNetRecord(void)
 {
-//	SpiFlashInfoInit();
-//	FlashUnlock();
-
 	memset(pApJoiningRecord, 0xFF, sizeof(struct AP_RECORD));
 	pNetRecordFile = Fopen(NetRecordFileName, "w");
 	Fwrite(pApJoiningRecord, sizeof(struct AP_RECORD), 1, pNetRecordFile);
@@ -105,6 +104,9 @@ void ReadNetRecord(void)
 	Fclose( pNetRecordFile );
 }
 
+/*
+ * volume infor record
+ */
 //void GetVolumeRecord(void)
 //{
 //	pVolumeRecordFile = Fopen(VolumeRecordFileName, "r");
@@ -123,33 +125,40 @@ void ReadNetRecord(void)
 //	Fclose( pVolumeRecordFile );	
 //}
 
-//void GetPlayRecord(void)
-//{
-//	pPlayRecordFile = Fopen(PlayRecordFileName,"r");
-//	Fread(WifiaudioPlayRecord, sizeof(PLAY_RECORD),1 ,pPlayRecordFile);
-//	Fclose( pPlayRecordFile );	
-//}
+/*
+ * Wifi Play infor record
+ */
+extern PLAY_RECORD *WifiaudioPlayRecord;
+void ReadPlayRecord(void)
+{
+	pPlayRecordFile = Fopen(PlayRecordFileName,"r");
+	Fread(WifiaudioPlayRecord, sizeof(PLAY_RECORD),1 ,pPlayRecordFile);
+	Fclose( pPlayRecordFile );	
+}
 
-//void BurnPlayRecord(void)
-//{
-//    WifiaudioPlayRecord->flag = WIFIAUDIO_RECORD_FLAG;
-//    SpiFlashInfoInit();
-////	FlashUnlock();
-//	pPlayRecordFile = Fopen(PlayRecordFileName,"w");
-//	Fwrite(WifiaudioPlayRecord, sizeof(PLAY_RECORD), 1, pPlayRecordFile);
-//	Fclose( pPlayRecordFile );
-//}
+void BurnPlayRecord(void)
+{
+    WifiaudioPlayRecord->playFlag = WIFIAUDIO_RECORD_FLAG;
+//	SpiFlashInfoInit();
+//	FlashUnlock();
+	pPlayRecordFile = Fopen(PlayRecordFileName,"w");
+	Fwrite(WifiaudioPlayRecord, sizeof(PLAY_RECORD), 1, pPlayRecordFile);
+	Fclose( pPlayRecordFile );
+}
 
-//void ErasePlayRecord(void)
-//{
-//    SpiFlashInfoInit();
-////	FlashUnlock();
-//	memset(WifiaudioPlayRecord, 0xFF, sizeof(PLAY_RECORD));
-//	pPlayRecordFile = Fopen(PlayRecordFileName, "w");
-//	Fwrite(WifiaudioPlayRecord, sizeof(PLAY_RECORD), 1, pPlayRecordFile);
-//	Fclose( pPlayRecordFile );
-//}
+void ErasePlayRecord(void)
+{
+//	SpiFlashInfoInit();
+//	FlashUnlock();
+	memset(WifiaudioPlayRecord, 0xFF, sizeof(PLAY_RECORD));
+	pPlayRecordFile = Fopen(PlayRecordFileName, "w");
+	Fwrite(WifiaudioPlayRecord, sizeof(PLAY_RECORD), 1, pPlayRecordFile);
+	Fclose( pPlayRecordFile );
+}
 
+/*
+ * Device infor record
+ */
 //void GetDeviceUser(void)
 //{
 //	pGetDeviceUserFile = Fopen(GetDeviceUserFileName, "r");
@@ -178,50 +187,68 @@ void ReadNetRecord(void)
 //	}
 //}
 
-//void GetMediaIdRecord(void)
-//{
-//	pMediaFile = Fopen(MediaFileName , "r");
-//	Fread(pt_media_record, sizeof(media_record_st), 1, pMediaFile);
-//	Fclose( pMediaFile );
+/*
+ * Media ID infor record
+ */
+/*void GetMediaIdRecord(void)
+{
+	pMediaFile = Fopen(MediaFileName , "r");
+	Fread(pt_media_record, sizeof(media_record_st), 1, pMediaFile);
+	Fclose( pMediaFile );
 
-//	pMediaIDFile = Fopen(MediaIDFileName , "r");
-//	Fread(pt_media_id_record, sizeof(media_id_record_st), 1, pMediaIDFile);
-//	Fclose( pMediaIDFile );
-//}
+	pMediaIDFile = Fopen(MediaIDFileName , "r");
+	Fread(pt_media_id_record, sizeof(media_id_record_st), 1, pMediaIDFile);
+	Fclose( pMediaIDFile );
+}
 
-//void BurnWeixinRecord(void)
-//{
-//    SpiFlashInfoInit();
-////	FlashUnlock();
-//	
-//	pMediaFile = Fopen(MediaFileName , "w");
-//	Fwrite(pt_media_record, sizeof(media_record_st), 1, pMediaFile);
-//	Fclose( pMediaFile );
-//}
+void BurnWeixinRecord(void)
+{
+    SpiFlashInfoInit();
+	
+	pMediaFile = Fopen(MediaFileName , "w");
+	Fwrite(pt_media_record, sizeof(media_record_st), 1, pMediaFile);
+	Fclose( pMediaFile );
+}
+*/
 
-////addr:0x1E9000 size:20K
-//#define SIZE_WX_MEDIAID	0x5000 //5*4095=20K
-//void BurnWeixinMediaId(void)
-//{
-//    SpiFlashInfoInit();
-////	FlashUnlock();
-//	
-//	pMediaIDFile = Fopen(MediaIDFileName , "w");
-//	Fwrite(pt_media_id_record, sizeof(media_id_record_st), 1, pMediaIDFile);
-//	Fclose( pMediaIDFile );
-//}
+/*
+ * wx speech id record
+ */
+extern WX_SPEECH_RECORD *pWxSpeechRecord;
+extern WX_SPEECH_ID_RECORD *pWxSpeechIdRecord;
+void BurnWxSpeechRecord(void)
+{
+    SpiFlashInfoInit();
+	
+	pWxSpeechFile = Fopen(WxSpeechFileName , "w");
+	Fwrite(pWxSpeechRecord, sizeof(WX_SPEECH_RECORD), 1, pWxSpeechFile);
+	Fclose( pWxSpeechFile );
+}
+void ReadWxSpeechRecord(void)
+{
+	pWxSpeechFile = Fopen(WxSpeechFileName , "r");
+	Fread(pWxSpeechRecord, sizeof(WX_SPEECH_RECORD), 1, pWxSpeechFile);
+	Fclose( pWxSpeechFile );
+}
 
-//void EraseWeixinRecord(void)
-//{
-//	memset(pt_media_record, 0xFF, sizeof(media_record_st));
-//    SpiFlashInfoInit();
-////	FlashUnlock();
-//	
-//	pMediaFile = Fopen(MediaFileName , "w");
-//	Fwrite(pt_media_record, sizeof(media_record_st), 1, pMediaFile);
-//	Fclose( pMediaFile );
-//}
+void BurnWxSpeechIdRecord(void)
+{
+    SpiFlashInfoInit();
+	
+	pWxSpeechIdFile = Fopen(WxSpeechIdFileName , "w");
+	Fwrite(pWxSpeechIdRecord, sizeof(WX_SPEECH_ID_RECORD), 1, pWxSpeechIdFile);
+	Fclose( pWxSpeechIdFile );
+}
+void ReadWxSpeechIdRecord(void)
+{
+	pWxSpeechIdFile = Fopen(WxSpeechIdFileName , "r");
+	Fread(pWxSpeechIdRecord, sizeof(WX_SPEECH_ID_RECORD), 1, pWxSpeechIdFile);
+	Fclose( pWxSpeechIdFile );
+}
 
+/*
+ * Media play infor record
+ */
 //#ifdef FUNC_CARD_EN
 //extern CARD_PLAY_RECORD CardPlayRecord;
 //void* GetPtCardInfor(void)

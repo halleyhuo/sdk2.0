@@ -16,8 +16,8 @@
 #include "type.h"
 #include "wifi_api.h"
 #include "airkiss_cloudapi.h"
-
-
+#include "wxcloud_api.h"
+#include "rtos.h"
 
 /***************************************************************************************
  *
@@ -31,7 +31,7 @@
  * Internal defines
  *
  */
-#define	WX_FILE_HOST_NAME			"file.api.weixin.qq.com";
+#define	WX_FILE_HOST_NAME			"file.api.weixin.qq.com"
 
 #define WX_FILE_HOST_PORT			80
 
@@ -40,6 +40,7 @@
 #define MV_IOT_HOST_PORT			80
 
 #define WX_MAX_DATA_BUFFER_SIZE		1024
+#define WX_SPEECH_LIST_BUFFER_SIZE	2048
 
 #define WX_MAX_RECEIVE_TIMEOUT		3000
 
@@ -69,19 +70,23 @@ typedef struct _WxSocketContext
 
 const char mvIOTGetRequest[] = "GET /device_get_token.php HTTP/1.1\r\nUser-Agent: mv_net\r\nHost:www.yuanyiwei.top\r\nConnction: Keep-Alive\r\n\r\n";
 
+const char mvIOTGetOtaUpgrade[] = "GET /device_mva/list.txt HTTP/1.1\r\nUser-Agent: mv_net\r\nHost:www.yuanyiwei.top\r\nConnction: Keep-Alive\r\n\r\n";
+const char mvIOTGetOtaUpgradeS[] = "GET /device_mva/%s HTTP/1.1\r\nUser-Agent: mv_net\r\nHost:www.yuanyiwei.top\r\nConnction: Keep-Alive\r\n\r\n";
+
+
 static uint8_t 					wxAccessToken[512];
 static WxSocketContext			wxSocketFileHost;
-static WxSocketContext			wxSocketMVHost;
-
+//static WxSocketContext			wxSocketMVHost;
+WxSocketContext					wxSocketMVHost;
 
 /***************************************************************************************
  *
  * Internal functions
  *
  */
-static bool IsIPaddressVaild(IP_ADDR ipAddr)
+static bool IsIPaddressVaild(IP_ADDR* ipAddr)
 {
-	if(strlen(ipAddr.ipAddrStr) == 0)
+	if(strlen(ipAddr->ipAddrStr) == 0)
 		return FALSE;
 
 	return TRUE;
@@ -93,14 +98,14 @@ static WxcloudStatus WxcloudConnectHost(uint8_t * hostName, IP_ADDR *ipAddr, int
 	WifiStatus			wifiStatus;
 
 
-	if(IsIPaddressVaild(*ipAddr))
+	if(IsIPaddressVaild(ipAddr))
 	{
-		wifiStatus = WifiConnectIP(*ipAddr, socket, port);
+		wifiStatus = WifiConnectIP(ipAddr, socket, port);
 
 		if(wifiStatus != WIFI_STATUS_SUCCESS)
 			return WXCLOUD_STATUS_FAILED;
 
-		return WXCLOUD_STATUS_SUCCESS
+		return WXCLOUD_STATUS_SUCCESS;
 	}
 
 	
@@ -150,7 +155,7 @@ static WxcloudStatus WxHttpHeaderParse(uint8_t * buff, uint16_t buffLen, uint8_t
 	{
 		if(memcmp(&buff[len],itemString,strlen(itemString)) == 0)
 		{
-			uint16_t		i;
+			uint16_t i;
 
 			for(len += itemStringLen, i = 0; (buff[len] != '\r' && buff[len] != '\n'); len++, i++)
 			{
@@ -163,15 +168,12 @@ static WxcloudStatus WxHttpHeaderParse(uint8_t * buff, uint16_t buffLen, uint8_t
 	return WXCLOUD_STATUS_FAILED;	
 }
 
-
 static int32_t WxHttpGetBodyPos(uint8_t * buff, uint16_t buffLen)
 {
 	int32_t			position = 0;
 
-
 	if(buff == NULL || buffLen == 0)
 		return -1;
-
 
 	while(position < buffLen - 3)
 	{
@@ -189,11 +191,35 @@ static int32_t WxHttpGetBodyPos(uint8_t * buff, uint16_t buffLen)
 	return position + 4;
 }
 
+static int32_t WxGetUnreadListHead(uint8_t * buff, uint16_t buffLen)
+{
+	int32_t	position = 0;
+
+	if(buff == NULL)
+		return -1;
+
+	while(position < buffLen)
+	{
+		if(buff[position] == '(')
+			break;
+
+		position++;
+	}
+
+	if(position >= buffLen - 1)
+		return -1;
+
+	return position;
+}
+
+/*
+ * wx speech error feedback
+ */
 static WxcloudStatus WxParseErrcode(uint8_t *buff, uint32_t bufLen, int32_t* errCode)
 {
 	uint32_t len = 0;
 
-
+	*errCode = 0;
 	while(len < bufLen)
 	{
 		if(buff[len++] == '"')
@@ -223,12 +249,16 @@ static WxcloudStatus WxcloudGetAccessToken(void)
 	int32_t					recvLen;
 	uint16_t				receivedLen;
 	uint8_t					*posStart, *posEnd;
+	uint8_t					posLen;
+	//uint8_t					wxDataBuff[1024];
+
+	printf("WxcloudGetAccessToken.\n");
 
 	wxStatus = WxcloudConnectMVIot();
 	if(wxStatus != WXCLOUD_STATUS_SUCCESS)
 		return wxStatus;
 
-	wxSocketMVHost.wxDataBuff = (uint8_t *)malloc(WX_MAX_DATA_BUFFER_SIZE);
+	wxSocketMVHost.wxDataBuff = (uint8_t *)MALLOC(WX_MAX_DATA_BUFFER_SIZE);
 	if(!wxSocketMVHost.wxDataBuff)
 	{
 		return WXCLOUD_STATUS_FAILED;
@@ -243,6 +273,10 @@ static WxcloudStatus WxcloudGetAccessToken(void)
 
 	/* Receive AccessToken response*/
 	receivedLen = 0;
+
+	/*
+	 * eg:(f927Bic3j2Eq8zndgZDHn7FcGshJ5MOSIiLo_M4s xmkp4vUZSjlcsnezH-slV4G-ztOfXoPs VWmJ0B5LC-8fzSYe9spFfqCrV0QUnmwD240GPRdADAXGI)
+	 */
 	while(1)
 	{
 		recvLen = WifiRecv(wxSocketMVHost.wxSocket, wxSocketMVHost.wxDataBuff + receivedLen, WX_MAX_DATA_BUFFER_SIZE, WX_MAX_RECEIVE_TIMEOUT);
@@ -251,23 +285,28 @@ static WxcloudStatus WxcloudGetAccessToken(void)
 			wxStatus = WXCLOUD_STATUS_FAILED;
 			goto END;
 		}
-		posEnd = strstr(wxSocketMVHost.wxDataBuff, ')');
+		if(recvLen == 0)
+		{
+			continue;
+		}
+		printf("%s\n", wxSocketMVHost.wxDataBuff);
+		posEnd = strstr(wxSocketMVHost.wxDataBuff, ")");
 		if(posEnd != NULL)
 		{
-			posStart = strstr(wxSocketMVHost.wxDataBuff, '(');
+			posStart = strstr(wxSocketMVHost.wxDataBuff, "(");
 			memset(wxAccessToken, 0 ,sizeof(wxAccessToken));
-			memcpy(wxAccessToken, wxSocketMVHost.wxDataBuff + posStart + 1, posEnd - posStart - 1);
+			memcpy(wxAccessToken, (posStart + 1), (*posEnd - *posStart - 1));
 			wxStatus = WXCLOUD_STATUS_SUCCESS;
+			printf("AccessToken: %s\n", wxAccessToken);
 			break;
 		}
 	}
-
 END:
 	SocketClose(wxSocketMVHost.wxSocket);
 
 	if(wxSocketMVHost.wxDataBuff)
-		free(wxSocketMVHost.wxDataBuff);
-
+		FREE(wxSocketMVHost.wxDataBuff);
+	
 	return wxStatus;
 }
 
@@ -296,8 +335,6 @@ WxcloudStatus WxcloudRegister(WxcloudParams *params, WxcloudDevInfo *wxcloudDevI
 	uint8_t					*deviceId;
 	uint8_t					*deviceType;
 	airkiss_callbacks_t		cbs;
-
-
 
 	ret = airkiss_cloud_init(params->devLicense, 
 							params->devLicenseLen, 
@@ -338,14 +375,107 @@ WxcloudStatus WxcloudDeregister(void)
 	return WXCLOUD_STATUS_SUCCESS;
 }
 
-void WxcloudRun(void)
+uint32_t WxcloudRun(void)
 {
-	airkiss_cloud_loop();
+	return airkiss_cloud_loop();
 }
 
+/*
+ * get wx speech unread list
+ * 
+ */
+WxcloudStatus WxCloudGetSpeechUnreadList(uint8_t **listData, int32_t *listLen, WxcloudDevInfo *devInfo)
+{
+	WxcloudStatus		wxStatus = WXCLOUD_STATUS_SUCCESS;
+
+	int32_t				recvLen = 0;
+	uint32_t			receivedLen;
+	uint32_t			posStart;
+	uint32_t			*posEnd;
+	uint32_t			posLen;
+	int32_t				sentLen;
+
+	if(*listData == NULL || listData == NULL)
+		return WXCLOUD_STATUS_PARAMS_ERR;
+
+	wxStatus = WxcloudConnectMVIot();
+	if(wxStatus != WXCLOUD_STATUS_SUCCESS)
+		return wxStatus;
+
+	wxSocketFileHost.wxDataBuff = (uint8_t *)MALLOC(WX_SPEECH_LIST_BUFFER_SIZE);
+	if(wxSocketFileHost.wxDataBuff == NULL)
+		return WXCLOUD_STATUS_FAILED;
+
+	memset(wxSocketFileHost.wxDataBuff, 0, WX_SPEECH_LIST_BUFFER_SIZE);
+
+	sprintf((char*)wxSocketFileHost.wxDataBuff,"GET /device_get_mediaid.php?device_id=%s HTTP/1.1\r\nHost: www.yuanyiwei.top\r\nConnection: keep-alive\r\n\r\n",devInfo->devId);
+	sentLen = WifiSend(wxSocketFileHost.wxSocket, wxSocketFileHost.wxDataBuff ,strlen(wxSocketFileHost.wxDataBuff), 0);
+
+	if(sentLen < 0)
+	{
+		wxStatus = WXCLOUD_STATUS_FAILED;
+		goto END;
+	}
+
+	memset(wxSocketFileHost.wxDataBuff, 0, WX_SPEECH_LIST_BUFFER_SIZE);
+
+	recvLen = 0;
+	receivedLen = 0;
+	while(1)
+	{
+		recvLen = WifiRecv(wxSocketFileHost.wxSocket, &wxSocketFileHost.wxDataBuff[receivedLen], WX_MAX_DATA_BUFFER_SIZE, WX_MAX_RECEIVE_TIMEOUT);
+		
+		if(recvLen < 0)
+		{
+			wxStatus = WXCLOUD_STATUS_FAILED;
+			goto END;
+		}
+		else if(recvLen == 0)
+		{
+			continue;
+		}
+		else
+		{
+			receivedLen += recvLen;
+		}
+
+		//printf("%s\n", wxSocketMVHost.wxDataBuff);
+		posEnd = strstr(wxSocketMVHost.wxDataBuff, ")");
+		if(posEnd != NULL)
+		{
+			posStart = WxGetUnreadListHead(wxSocketMVHost.wxDataBuff, receivedLen);
+			if(posStart>0)
+			{
+				*listData = &wxSocketFileHost.wxDataBuff[posStart];
+				*listLen = posEnd - posStart;
+				wxStatus = WXCLOUD_STATUS_SUCCESS;
+				
+				/*
+				 *eg:(mediaid;_XlXnU6TE5dQE7bd-DFnLoQ_9hCMpXczA8yJxSE7hvqdoYMetToajukSUBe1nsdX;
+				 52HyZb2PYAje0g-2UJmMilxioOHSEUXY7S-t6IJY-0SN2Rd-wa8lxeqc8n8Wi6M-;
+				 IPWZaakmWeUKY4ChfNVIhonabPgCPTaNW9nkZ_W0C-IAUKjGwNWHhlZm4AX34YkN;
+				 96VOq_0ZQF74jxXrBh-kXkaWaDqPXRsIkDJ-XE3xIMhdZjlQgGLdvVkDoXUVgUwF)
+				 */
+				printf("%s\n", &wxSocketFileHost.wxDataBuff[posStart]);
+			}
+			break;
+		}
+	}
+END:
+	SocketClose(wxSocketMVHost.wxSocket);
+
+	if(wxSocketMVHost.wxDataBuff)
+		FREE(wxSocketMVHost.wxDataBuff);
+	
+	return wxStatus;
+}
+
+/*
+ * get weixin speech data
+ */
 WxcloudStatus WxcloudGetMediaStart(uint8_t *mediaId)
 {
-	int32_t			sentLen;;
+	int32_t			sentLen;
 
 	if(mediaId == NULL)
 		return WXCLOUD_STATUS_PARAMS_ERR;
@@ -357,7 +487,7 @@ WxcloudStatus WxcloudGetMediaStart(uint8_t *mediaId)
 		return WXCLOUD_STATUS_FAILED;
 	}
 
-	wxSocketFileHost.wxDataBuff = (uint8_t *)malloc(WX_MAX_DATA_BUFFER_SIZE);
+	wxSocketFileHost.wxDataBuff = (uint8_t *)MALLOC(WX_MAX_DATA_BUFFER_SIZE);
 	if(wxSocketFileHost.wxDataBuff == NULL)
 		return WXCLOUD_STATUS_FAILED;
 
@@ -385,7 +515,7 @@ WxcloudStatus WxcloudGetMedia(uint8_t **amrData, int32_t *dataLen, int32_t *errC
 	uint8_t				mediaLength[20] = {0};
 	int32_t				bodyPos;
 
-
+	*errCode = 0;
 	if(*amrData == NULL || amrData == NULL)
 		return WXCLOUD_STATUS_PARAMS_ERR;
 
@@ -461,7 +591,7 @@ WxcloudStatus WxcloudGetMediaStop(void)
 	SocketClose(wxSocketFileHost.wxSocket);
 
 	if(wxSocketFileHost.wxDataBuff)
-		free(wxSocketFileHost.wxDataBuff);
+		FREE(wxSocketFileHost.wxDataBuff);
 
 	return WXCLOUD_STATUS_SUCCESS;
 }
@@ -495,7 +625,7 @@ WxcloudStatus WxcloudSendMedia(uint8_t *amrData, int32_t dataLen, uint8_t *media
 		return WXCLOUD_STATUS_FAILED;
 	}
 
-	wxSocketFileHost.wxDataBuff = (uint8_t *)malloc(WX_MAX_DATA_BUFFER_SIZE);
+	wxSocketFileHost.wxDataBuff = (uint8_t *)MALLOC(WX_MAX_DATA_BUFFER_SIZE);
 	if(wxSocketFileHost.wxDataBuff == NULL)
 		return WXCLOUD_STATUS_FAILED;
 
@@ -512,7 +642,7 @@ WxcloudStatus WxcloudSendMedia(uint8_t *amrData, int32_t dataLen, uint8_t *media
 	/* Send amr data */
 	while(wxSocketFileHost.wxMediaRemainLen > 0)
 	{
-		lenDataToSend = wxSocketFileHost.wxMediaRemainLen) >  WX_MAX_DATA_BUFFER_SIZE ? WX_MAX_DATA_BUFFER_SIZE : wxSocketFileHost.wxMediaRemainLen;
+		lenDataToSend = wxSocketFileHost.wxMediaRemainLen >  WX_MAX_DATA_BUFFER_SIZE ? WX_MAX_DATA_BUFFER_SIZE : wxSocketFileHost.wxMediaRemainLen;
 
 		memcpy(wxSocketFileHost.wxDataBuff, amrData + (wxSocketFileHost.wxMeidaTotalSendLen - wxSocketFileHost.wxMediaRemainLen), lenDataToSend);
 
@@ -547,7 +677,7 @@ WxcloudStatus WxcloudSendMedia(uint8_t *amrData, int32_t dataLen, uint8_t *media
 
 	/* Skip "media_id":"xxxxxx"*/
 	posMediaIdBegin += 11;
-	posMediaIdEnd = strstr(posMediaIdBegin, '"');
+	posMediaIdEnd = strstr(posMediaIdBegin, "\"");
 	strncpy(mediaId, posMediaIdBegin, posMediaIdBegin - posMediaIdEnd);
 
 	wxStatus = WXCLOUD_STATUS_SUCCESS;
@@ -555,11 +685,99 @@ WxcloudStatus WxcloudSendMedia(uint8_t *amrData, int32_t dataLen, uint8_t *media
 END:
 	if(wxSocketFileHost.wxDataBuff)
 	{
-		free(wxSocketFileHost.wxDataBuff);
+		FREE(wxSocketFileHost.wxDataBuff);
 	}
 
 	SocketClose(wxSocketFileHost.wxSocket);
 
 	return wxStatus;
 }
+
+WxcloudStatus WxCloudSendMediaMsg(uint8_t *mediaId, uint8_t flag)
+{
+	wxSocketFileHost.wxDataBuff = (uint8_t *)MALLOC(WX_MAX_DATA_BUFFER_SIZE);
+	if(wxSocketFileHost.wxDataBuff == NULL)
+		return WXCLOUD_STATUS_FAILED;
+
+	memset(wxSocketFileHost.wxDataBuff ,0,1024);
+    sprintf((char*)wxSocketFileHost.wxDataBuff,"{\"msg_type\":\"notify\",\"services\":{\"operation_status\":{\"status\":1},\"air_conditioner\":{\"tempe_indoor\":26,\"tempe_outdoor\":31,\"tempe_target\":26,\"fan_speed\":50}},\"data\":\"sendamr#%s#%d\"}",mediaId,flag);
+    airkiss_cloud_sendmessage(1, (uint8_t*)wxSocketFileHost.wxDataBuff,strlen(wxSocketFileHost.wxDataBuff));
+
+	if(wxSocketFileHost.wxDataBuff)
+	{
+		FREE(wxSocketFileHost.wxDataBuff);
+	}
+
+	return WXCLOUD_STATUS_SUCCESS;
+}
+
+WxcloudStatus WxcloudGetFirmwareVersion(uint8_t *Data)
+{
+	WxcloudStatus			wxStatus = WXCLOUD_STATUS_FAILED;
+	int32_t					recvLen;
+	uint16_t				receivedLen;
+	uint8_t					*posStart, *posEnd;
+	uint8_t					posLen;
+
+	printf("WxcloudGetFirmwareVersion.\n");
+
+	wxStatus = WxcloudConnectMVIot();
+	if(wxStatus != WXCLOUD_STATUS_SUCCESS)
+		return wxStatus;
+
+	wxSocketMVHost.wxDataBuff = (uint8_t *)MALLOC(WX_MAX_DATA_BUFFER_SIZE);
+	if(!wxSocketMVHost.wxDataBuff)
+	{
+		return WXCLOUD_STATUS_FAILED;
+	}
+	memset(wxSocketMVHost.wxDataBuff, 0, WX_MAX_DATA_BUFFER_SIZE);
+
+	strcpy(wxSocketMVHost.wxDataBuff, mvIOTGetOtaUpgrade);
+
+	WifiSend(wxSocketMVHost.wxSocket, wxSocketMVHost.wxDataBuff, strlen(wxSocketMVHost.wxDataBuff), 0);
+
+	memset(wxSocketMVHost.wxDataBuff, 0, WX_MAX_DATA_BUFFER_SIZE);
+
+	/* Receive AccessToken response*/
+	receivedLen = 0;
+
+	/*
+	 * eg:(f927Bic3j2Eq8zndgZDHn7FcGshJ5MOSIiLo_M4s xmkp4vUZSjlcsnezH-slV4G-ztOfXoPs VWmJ0B5LC-8fzSYe9spFfqCrV0QUnmwD240GPRdADAXGI)
+	 */
+	while(1)
+	{
+		recvLen = WifiRecv(wxSocketMVHost.wxSocket, wxSocketMVHost.wxDataBuff + receivedLen, WX_MAX_DATA_BUFFER_SIZE, WX_MAX_RECEIVE_TIMEOUT);
+		if(recvLen <= 0)
+		{
+			wxStatus = WXCLOUD_STATUS_FAILED;
+			printf("Get Firmware Version Fail\n");
+			goto END;
+		}
+		
+		printf("%s\n", wxSocketMVHost.wxDataBuff);
+		
+		posEnd = strstr(wxSocketMVHost.wxDataBuff, ")");
+		if(posEnd != NULL)
+		{
+			posStart = strstr(wxSocketMVHost.wxDataBuff, "(");
+			memset(wxAccessToken, 0 ,sizeof(wxAccessToken));
+			memcpy(wxAccessToken, (posStart + 1), (posEnd - posStart - 1));
+			wxStatus = WXCLOUD_STATUS_SUCCESS;
+			printf("AccessToken: %s\n", wxAccessToken);
+			break;
+		}
+	}
+END:
+	SocketClose(wxSocketMVHost.wxSocket);
+
+	if(wxSocketMVHost.wxDataBuff)
+		FREE(wxSocketMVHost.wxDataBuff);
+	
+	return wxStatus;
+}
+
+
+
+
+
 

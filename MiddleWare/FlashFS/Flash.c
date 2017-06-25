@@ -1700,7 +1700,7 @@ static	int		ramFAT_Update(VOID)
 		||	(BufferWrite( wClusterAdd + 4, &ramFAT, sizeof(FAT)) < 0)
 		||	(WordWrite( wClusterAdd, wClusterMark) < 0)){
 			
-			 SpiFlashRead(wClusterAdd,(uint8_t*)wClusterMark,sizeof( wClusterMark ));
+			 SpiFlashRead(wClusterAdd,(uint8_t*)&wClusterMark,sizeof( wClusterMark ));
 			
 			if (((nRet = SetClusterMark(wCluster, CM_VOID, FAT_VOID)) < 0)
 			&&	(( wClusterMark & ~CM_FAT_ID) == CM_FAT)){
@@ -1720,7 +1720,7 @@ static	int		ramFAT_Update(VOID)
 	/*----------------------------------------------------------------------*/
 	if (wFATCluster != FAT_VOID){
 		wClusterAdd	= GetClusterAddress(wFATCluster);
-		SpiFlashRead(wClusterAdd,(uint8_t*)wClusterMark,sizeof( wClusterMark ));
+		SpiFlashRead(wClusterAdd,(uint8_t*)&wClusterMark,sizeof( wClusterMark ));
 		
 		if (((nRet = SetClusterMark(wFATCluster, CM_VOID, FAT_VOID)) < 0)
 		&&	((wClusterMark & ~CM_FAT_ID) == CM_FAT)){

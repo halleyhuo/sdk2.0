@@ -13,7 +13,10 @@
  */
 
 #include "type.h"
- 
+#include "wifi_audio_api.h"
+#include "wxcloud_api.h"
+#include "wifi_api.h"
+
 #if 1
 /***************************************************************************************
  *
@@ -38,6 +41,7 @@ typedef struct _WaSocketContext
 {
 	int32_t 		waSocket;
 	uint8_t 		*waDataBuff;
+	bool			waMediaStart;
 
 	/* for receive */
 	bool			headerFlag;
@@ -76,7 +80,7 @@ uint16_t ParseDonmainName(uint8_t * url, uint8_t * donmainName)
 	posStart = url + 7;
 
 	/* find first '/' */
-	posEnd = strstr(posStart, '/');
+	posEnd = strstr(posStart, "/");
 
 	len = posEnd - posStart;
 
@@ -87,7 +91,6 @@ uint16_t ParseDonmainName(uint8_t * url, uint8_t * donmainName)
 
 	return len;
 }
-
 
 static WAudioStatus WifiAudioHttpHeaderParse(uint8_t * buff, uint16_t buffLen, uint8_t * itemString, uint8_t * itemContent)
 {
@@ -109,6 +112,7 @@ static WAudioStatus WifiAudioHttpHeaderParse(uint8_t * buff, uint16_t buffLen, u
 			}
 			return WXCLOUD_STATUS_SUCCESS;
 		}
+		len++;
 	}
 
 	return WXCLOUD_STATUS_FAILED;	
@@ -119,10 +123,8 @@ static int32_t WifiAudioHttpGetBodyPos(uint8_t * buff, uint16_t buffLen)
 {
 	int32_t			position = 0;
 
-
 	if(buff == NULL || buffLen == 0)
 		return -1;
-
 
 	while(position < buffLen - 3)
 	{
@@ -138,6 +140,28 @@ static int32_t WifiAudioHttpGetBodyPos(uint8_t * buff, uint16_t buffLen)
 	}
 
 	return position + 4;
+}
+
+AudioFormat WifiAudioFormatParse(const uint8_t *buff)
+{
+	uint32_t		len = 0;
+	uint32_t		stringLen=0;
+
+	stringLen = strlen(buff);
+
+	while(len<stringLen)
+	{
+		if(memcmp(&buff[len],".mp3",4) == 0)
+		{
+			return FORMAT_MP3;
+		}
+		else if(memcmp(&buff[len],".m4a",4) == 0)
+		{
+			return FORMAT_M4A;
+		}
+		len++;
+	}
+	return FORMAT_UNKNOWN;
 }
 
 /***************************************************************************************
@@ -157,7 +181,7 @@ WAudioStatus WifiAudioDeinit(void)
 
 }
 
-WAudioStatus WifiAudioGetMediaStart(uint8_t * url)
+WAudioStatus WifiAudioGetMediaStart(uint8_t * url, int32_t position)
 {
 	uint8_t			donmainName[MAX_DONMAIN_LEN];
 	uint16_t		donmainNameLen;
@@ -165,6 +189,7 @@ WAudioStatus WifiAudioGetMediaStart(uint8_t * url)
 	WAudioStatus	waudioStatus = WAUDIO_STATUS_FAILED;
 	WifiStatus		wifiStatus;
 
+	waSocketLink.waMediaStart = TRUE;
 
 	waSocketLink.waDataBuff = (uint8_t *)pvPortMalloc(WA_MAX_DATA_BUFFER_SIZE);
 	if(waSocketLink.waDataBuff == NULL)
@@ -173,10 +198,8 @@ WAudioStatus WifiAudioGetMediaStart(uint8_t * url)
 	}
 	memset(waSocketLink.waDataBuff, 0, WA_MAX_DATA_BUFFER_SIZE);
 	
-	
 	donmainNameLen = ParseDonmainName(url, donmainName);
-	posContent = url + 7 /*Skip "http://"*/ + donmainNameLen;
-
+	posContent = 7 /*Skip "http://"*/ + donmainNameLen;
 
 	wifiStatus = WifiConnectURL(donmainName, &waSocketLink.waSocket, 80);
 	if(wifiStatus != WIFI_STATUS_SUCCESS)
@@ -186,34 +209,35 @@ WAudioStatus WifiAudioGetMediaStart(uint8_t * url)
 
 	/* Send http request */
 	sprintf(waSocketLink.waDataBuff, "GET %s HTTP/1.1\r\n", url + posContent);
-
 	wifiStatus = WifiSend(waSocketLink.waSocket, waSocketLink.waDataBuff, strlen(waSocketLink.waDataBuff), 0);
-	if(wifiStatus != WIFI_STATUS_SUCCESS)
+	if(wifiStatus < WIFI_STATUS_SUCCESS)
 	{
 		goto END;
 	}
 
 	/* Send range */
 	memset(waSocketLink.waDataBuff, 0, WA_MAX_DATA_BUFFER_SIZE);
-
-	sprintf(waSocketLink.waDataBuff, "RANGE: bytes=%d-\r\n", 0);
+	
+	sprintf(waSocketLink.waDataBuff, "RANGE: bytes=%d-\r\n", position);
 
 	wifiStatus = WifiSend(waSocketLink.waSocket, waSocketLink.waDataBuff, strlen(waSocketLink.waDataBuff), 0);
-	if(wifiStatus != WIFI_STATUS_SUCCESS)
+	if(wifiStatus < WIFI_STATUS_SUCCESS)
 	{
 		goto END;
 	}
 
 	/* Send ending string */
 	wifiStatus = WifiSend(waSocketLink.waSocket, endString, strlen(endString), 0 );
-	if(wifiStatus != WIFI_STATUS_SUCCESS)
+	if(wifiStatus < WIFI_STATUS_SUCCESS)
 	{
 		goto END;
 	}
 	
-	wxSocketFileHost.headerFlag = FALSE;
-	waudioStatus = WAUDIO_STATUS_SUCCESS;
+	waSocketLink.headerFlag = FALSE;
 
+	waudioStatus = WAUDIO_STATUS_SUCCESS;
+	return waudioStatus;
+	
 END:
 	if(waSocketLink.waDataBuff)
 		vPortFree(waSocketLink.waDataBuff);
@@ -221,7 +245,7 @@ END:
 	return waudioStatus;
 }
 
-WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen)
+WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen, int32_t *position)
 {
 	WAudioStatus	waudioStatus = WAUDIO_STATUS_FAILED;
 	int32_t			headLen;
@@ -229,15 +253,17 @@ WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen)
 	int32_t			bodyPos;
 
 
-	if(audioData == NULL || *audioData == NULL || dataLen == NULL)
+	if(audioData == NULL || *audioData == NULL || dataLen == NULL || position == NULL)
 		return WAUDIO_STATUS_PARAMS_ERR;
 
 	if(waSocketLink.headerFlag == FALSE) /* to receive http header */
 	{
-		headLen = WifiRecv(waSocketLink.wxSocket, waSocketLink.wxDataBuff, WA_MAX_DATA_BUFFER_SIZE, WA_MAX_RECEIVE_TIMEOUT);
+		memset(waSocketLink.waDataBuff, 0, WA_MAX_DATA_BUFFER_SIZE);
+		headLen = WifiRecv(waSocketLink.waSocket, waSocketLink.waDataBuff, WA_MAX_DATA_BUFFER_SIZE, WA_MAX_RECEIVE_TIMEOUT);
 		if(headLen < 0)
 			return WAUDIO_STATUS_FAILED;
 
+		//DBG("%s\n", waSocketLink.waDataBuff);
 		waudioStatus = WifiAudioHttpHeaderParse(waSocketLink.waDataBuff, headLen, "Content-Length: ", mediaLength);
 		if(waudioStatus == WAUDIO_STATUS_SUCCESS)
 		{
@@ -256,6 +282,7 @@ WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen)
 
 		*audioData = &waSocketLink.waDataBuff[bodyPos];
 		*dataLen = headLen - bodyPos;
+		*position = headLen - bodyPos;
 		waSocketLink.waMediaReceivedLen = headLen - bodyPos;
 		waSocketLink.headerFlag = TRUE;
 
@@ -272,9 +299,10 @@ WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen)
 			if(recvLen <= 0)
 				return WAUDIO_STATUS_NO_MORE_DATA;
 
-			*audioData = waSocketLink.wxDataBuff;
+			*audioData = waSocketLink.waDataBuff;
 			*dataLen = recvLen;
 			waSocketLink.waMediaReceivedLen += recvLen;
+			*position = waSocketLink.waMediaReceivedLen;
 			return WAUDIO_STATUS_SUCCESS;
 		}
 		else
@@ -286,12 +314,16 @@ WAudioStatus WifiAudioGetMedia(uint8_t **audioData, int32_t *dataLen)
 
 WAudioStatus WifiAudioGetMediaStop(void)
 {
-	SocketClose(waSocketLink.waSocket);
+	if(waSocketLink.waMediaStart)
+	{
+		waSocketLink.waMediaStart = FALSE;
+		SocketClose(waSocketLink.waSocket);
+	}
 
 	if(waSocketLink.waDataBuff)
-		free(waSocketLink.waDataBuff);
+		vPortFree(waSocketLink.waDataBuff);
 
-	return WAUDIO_STATUS_SUCCESS
+	return WAUDIO_STATUS_SUCCESS;
 }
 
 #endif

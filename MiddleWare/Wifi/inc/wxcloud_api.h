@@ -73,10 +73,19 @@ WxcloudStatus WxcloudRegister(WxcloudParams *params, WxcloudDevInfo *wxcloudDevI
 
 WxcloudStatus WxcloudDeregister(void);
 
-void WxcloudRun(void);
-
-WxcloudStatus WxcloudGetAccessToken(uint8_t * accessToken);
+uint32_t WxcloudRun(void);
 
 
+WxcloudStatus WxCloudGetSpeechUnreadList(uint8_t **listData, int32_t *listLen, WxcloudDevInfo *devInfo);
+
+WxcloudStatus WxcloudGetMediaStart(uint8_t *mediaId);
+
+WxcloudStatus WxcloudGetMedia(uint8_t **amrData, int32_t *dataLen, int32_t *errCode);
+
+WxcloudStatus WxcloudGetMediaStop(void);
+
+WxcloudStatus WxcloudSendMedia(uint8_t *amrData, int32_t dataLen, uint8_t *mediaId);
+
+WxcloudStatus WxCloudSendMediaMsg(uint8_t *mediaId, uint8_t flag);
 
 #endif /*__WXCLOUD_API_H__*/

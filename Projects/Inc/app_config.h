@@ -36,6 +36,8 @@
 
 #define	FS_DBG(format, ...)		printf(format, ##__VA_ARGS__)
 
+#define wifi_audio_debug(format, ...)	printf(format, ##__VA_ARGS__)
+
 #define ASSERT(x)
 
 #define FUNC_CARD_EN		//CARD

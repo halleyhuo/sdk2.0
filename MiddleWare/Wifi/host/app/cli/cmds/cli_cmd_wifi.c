@@ -332,18 +332,43 @@ void _deauth_handler (void *data)
 }
 
 #endif // USE_CMD_RESP
-void sconfig_scan_done (void *data);
-extern uint8_t sconfig_flag,scan_falg,connect_wifi_flag;
+void SconfigScanDone(void *data);
+
+static u8 sconfig_flag=0, scan_flag=0, connect_wifi_flag=0;
+void set_sconfig_flag(u8 flag)
+{
+	sconfig_flag = flag;
+}
+u8 get_sconfig_flag(void)
+{
+	return sconfig_flag;
+}
+void set_scan_flag(u8 flag)
+{
+	scan_flag = flag;
+}
+u8 get_scan_flag(void)
+{
+	return scan_flag;
+}
+void set_connect_wifi_flag(u8 flag)
+{
+	connect_wifi_flag = flag;
+}
+u8 get_connect_wifi_flag(void)
+{
+	return connect_wifi_flag;
+}
 
 static void _scan_down_handler (void *data)
 {
     struct resp_evt_result *scan_done = (struct resp_evt_result *)data;
     if(scan_done->u.scan_done.result_code==0){
-        scan_falg=1;
+        scan_flag=1;
         LOG_PRINTF("Scan Done\r\n");
     }else{
         LOG_PRINTF("Scan FAIL\r\n");
-        scan_falg=2;
+        scan_flag=2;
     }
     return;
 }
@@ -354,7 +379,7 @@ static void _sconfig_scan_done (void *data)
     if(sconfig_done->u.sconfig_done.result_code==0){
         MEMCPY((void*)ssid_buf,(void*)sconfig_done->u.sconfig_done.ssid,sconfig_done->u.sconfig_done.ssid_len);
         LOG_PRINTF("SconfigDone. SSID:%s, PWD:%s , rand=%d\r\n",ssid_buf,sconfig_done->u.sconfig_done.pwd,sconfig_done->u.sconfig_done.rand);
-        sconfig_scan_done(data);
+        SconfigScanDone(data);
     }else{
         LOG_PRINTF("Sconfig FAIL\r\n");
         sconfig_flag = 2;

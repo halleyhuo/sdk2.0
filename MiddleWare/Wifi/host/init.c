@@ -294,7 +294,7 @@ ssv6xxx_result wifi_start(wifi_mode mode, bool static_ip, bool dhcp_server)
     /* smart link mode */
     if (mode == SSV6XXX_HWM_SCONFIG)
     {
-        res = SCONFIGmode_default();
+        res = Switch2SCONFIGmode();
     }
 
     LOG_PRINTF("wifi start \r\n");

@@ -16,7 +16,7 @@
 #include "type.h"
 #include "wifi_api.h"
 #include "sockets.h"
-
+#include <net_mgr.h>
 
 
 /***************************************************************************************
@@ -103,7 +103,7 @@ static WifiStatus ResolveIPFromDNSPOD(uint8_t *url, IP_ADDR *ipAddr)
 
 	memset(temp, 0, TEMP_MALLOC_SIZE);
 	sprintf(temp,"GET /Httpdns/Query?dn=%s HTTP/1.1\r\n%s", url, dnsPodGet);
-	WifiSend(sock, temp, strlen(temp));
+	WifiSend(sock, temp, strlen(temp),0);
 	memset(temp,0,TEMP_MALLOC_SIZE);
 
 	len = WifiRecv(sock, temp, TEMP_MALLOC_SIZE, GET_IP_RESOLVE_TIMEOUT);
@@ -115,6 +115,7 @@ static WifiStatus ResolveIPFromDNSPOD(uint8_t *url, IP_ADDR *ipAddr)
 		return WIFI_STATUS_FAILED;
 	}
 
+	printf("%s\n", temp);
 	for(i = len-10; i > 10; i--)
 	{
 		if((temp[i-3]=='"')&&(temp[i-2]=='i')&&(temp[i-1]=='p')&&(temp[i]=='"'))
@@ -135,7 +136,6 @@ static WifiStatus ResolveIPFromDNSPOD(uint8_t *url, IP_ADDR *ipAddr)
 
 	return WIFI_STATUS_FAILED;
 }
-
 
 /***************************************************************************************
  *
@@ -159,13 +159,12 @@ static WifiStatus ResolveIPFromDNSPOD(uint8_t *url, IP_ADDR *ipAddr)
 */
 WifiStatus WifiConnectURL(uint8_t *url, int32_t *sock, int32_t port)
 {
-
 	IP_ADDR		ipAddress;
 
-	memset(&ipAddress, 0, sizeof(IP_ADDR));
-	if(ResolveIP(url, &ipAddress) == WIFI_STATUS_SUCCESS)
+	memset(&ipAddress.ipAddrStr[0], 0, sizeof(IP_ADDR));
+	if(ResolveIP(url, &ipAddress.ipAddrStr[0]) == WIFI_STATUS_SUCCESS)
 	{
-		return WifiConnectIP(ipAddress, sock, port);
+		return WifiConnectIP(&ipAddress.ipAddrStr[0], sock, port);
 	}
 
 	return WIFI_STATUS_FAILED;
@@ -186,7 +185,7 @@ WifiStatus WifiConnectURL(uint8_t *url, int32_t *sock, int32_t port)
 * @return
 * 	 WIFI_STATUS_SUCCESS or WIFI_STATUS_FAILED
 */
-WifiStatus WifiConnectIP(IP_ADDR ipAddr, int32_t *wifiSock, int32_t port)
+WifiStatus WifiConnectIP(IP_ADDR* ipAddr, int32_t *wifiSock, int32_t port)
 {
 	int sock;
 	struct sockaddr_in address;
@@ -201,7 +200,7 @@ WifiStatus WifiConnectIP(IP_ADDR ipAddr, int32_t *wifiSock, int32_t port)
 	memset(&address,0,sizeof(struct sockaddr_in));
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
-	address.sin_addr.s_addr = inet_addr(ipAddr.ipAddrStr);
+	address.sin_addr.s_addr = inet_addr(ipAddr->ipAddrStr);
 
 	if(SocketConnect(sock,(struct sockaddr *)&address, sizeof (address)) < 0)
 	{
@@ -307,6 +306,5 @@ WifiStatus  ResolveIP(uint8_t *url, IP_ADDR *ipAddr)
 
     return ResolveIPFromDNSPOD(url, ipAddr);
 }
-
 
 
