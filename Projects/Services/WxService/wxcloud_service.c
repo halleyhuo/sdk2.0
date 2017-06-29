@@ -948,6 +948,15 @@ static void WxcloudEventCB(EventValue event_value)
 //		SetConnectWXFlag();
 //		SetLed3(0);
 //		SetLed5(1);
+
+#if 0 // Halley for test
+		MessageHandle	msgHandle;
+		MessageContext	msgSend;
+		
+		msgSend.msgId = MSG_WIFI_AUDIO_PUSH_SONG;
+		msgHandle = GetWifiAudioPlayMessageHandle();
+		MessageSend(msgHandle, &msgSend);
+#endif
 	}
 	else if(event_value == 2)
 	{
@@ -1267,6 +1276,11 @@ static void WxcloudServiceEntrance(void)
  * wxcloud service APIs
  *
  */
+
+uint8_t *GetWifiPlayUrl(void)
+{
+	return &WifiAudioPlayList->playUrl[0];
+}
 
 MessageHandle GetWxcloudMessageHandle(void)
 {

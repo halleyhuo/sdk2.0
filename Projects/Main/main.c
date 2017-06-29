@@ -87,7 +87,7 @@ static int32_t StorageInit(void)
 static void PrintDeviceInit(void)
 {
 	GpioFuartTxIoConfig(0);
-	GpioFuartRxIoConfig(0);
+	GpioFuartRxIoConfig(0xff);// GPIOA1 for SPI-CS
 	FuartInit(115200, 8, 0, 1);
 }
 
@@ -113,6 +113,11 @@ static int32_t PeripheralInit(void)
 
 static int32_t OtherInit(void)
 {
+	if(InitFlashFS() != 0)
+	{
+		DBG("Init flashFs fail\n");
+	}
+	
 
 
 }

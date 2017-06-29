@@ -957,14 +957,14 @@
               <FilePath>..\..\MiddleWare\Wifi\src\wifi_api.c</FilePath>
             </File>
             <File>
-              <FileName>wifi_auido_api.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\MiddleWare\Wifi\src\wifi_auido_api.c</FilePath>
-            </File>
-            <File>
               <FileName>wifi_porting.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\MiddleWare\Wifi\src\wifi_porting.c</FilePath>
+            </File>
+            <File>
+              <FileName>wifi_audio_api.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\MiddleWare\Wifi\src\wifi_audio_api.c</FilePath>
             </File>
           </Files>
         </Group>

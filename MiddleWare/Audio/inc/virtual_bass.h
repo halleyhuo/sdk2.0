@@ -4,11 +4,18 @@
  * @brief	Virtual bass (bass extension).
  *
  * @author	ZHAO Ying (Alfred)
- * @version	v3.4.1
+ * @version	v4.1.0
  *
  * &copy; Shanghai Mountain View Silicon Co.,Ltd. All rights reserved.
  *************************************************************************************
  */
+
+/**
+* @addtogroup Audio
+* @{
+* @defgroup virtual_bass virtual_bass
+* @{
+*/
 
 #ifndef __VIRTUAL_BASS_H__
 #define __VIRTUAL_BASS_H__
@@ -36,15 +43,18 @@ typedef struct _VBContext
 {
 	int32_t sample_rate;
 	int32_t num_channels;
-	int32_t limiter_on;
 	int32_t state;
 	int32_t sd;
-	int32_t cs;	
-	int32_t fco[4];		// gl, gh, a1, a2
-	int32_t fop[9];		// g, b1, b2, a1, a2, b1, b2, a1, a2
-	int32_t ffb[4];		// gl, gh, a1, a2	
-	int32_t d[9][4];	// filter delays
-
+	int32_t cs;
+	//double cs;	
+	int32_t fco[7];		// gl0, gl1, gh0, gh1, a1, a2, a1'
+	//int32_t fpre[3];	// gl, gh, a1
+	//int32_t fop[8];		// gl0, gl1, gh0, gh1, a1, a2, a1', a2'
+	//int32_t fop[9];		// g, b1, b2, a1, a2, b1, b2, a1, a2
+	//int32_t fop[4];		// gl, gh, a1, a2
+	int32_t ffb[4];		// gl, gh, a1, a2
+	//int32_t flp[3];		// gl, gh, a1
+	int32_t d[11][4];	// filter delays
 } VBContext;
 
 
@@ -58,10 +68,9 @@ extern "C" {
  * @param num_channels number of channels. Both 1 and 2 channels are supported.
  * @param sample_rate sample rate
  * @param f_cut Cut-off frequency in Hz. Valid range: VB_MIN_CUTOFF_FREQ ~ VB_MAX_CUTOFF_FREQ Hz. Components below this cut-off frequency are attenuated and reproduced in another form (virtual effect).
- * @param limiter_on Enable/disable limiter. 1:on 0:off
  * @return error code. VB_ERROR_OK means successful, other codes indicate error.
  */
-int32_t init_vb(VBContext *vb, int32_t num_channels, int32_t sample_rate, int32_t f_cut, int32_t limiter_on);
+int32_t vb_init(VBContext *vb, int32_t num_channels, int32_t sample_rate, int32_t f_cut);
 
 
 /**
@@ -72,11 +81,10 @@ int32_t init_vb(VBContext *vb, int32_t num_channels, int32_t sample_rate, int32_
  *        pcm_out can be the same as pcm_in. In this case, the PCM is changed in-place.
  * @param n Number of PCM samples to process. 
  * @param intensity Intensity control of virtual bass effect. Valid values: 0 ~ 100.
- * @param pre_gain Pregain applied before effect processing.   Q2.15 format to represent value in range [0.5, 2]. For example, 16384 represents x0.5 (-6dB), 23198 represents x0.707 (-3dB), 32768 represents x1.0 (0dB),  46286 represents x1.413 (+3dB), 65536 represents x2 (+6dB)
- * @param post_gain Post gain applied after effect processing. Q2.15 format to represent value in range [0.5, 2]. For example, 16384 represents x0.5 (-6dB), 23198 represents x0.707 (-3dB), 32768 represents x1.0 (0dB),  46286 represents x1.413 (+3dB), 65536 represents x2 (+6dB)
+ * @param enhanced Switch of the enhanced mode. 0:Off, 1:On.
  * @return error code. VB_ERROR_OK means successful, other codes indicate error.
  */
-int32_t apply_vb(VBContext *vb, int16_t *pcm_in, int16_t *pcm_out, int32_t n, int32_t intensity, int32_t pre_gain, int32_t post_gain);
+int32_t vb_apply(VBContext *vb, int16_t *pcm_in, int16_t *pcm_out, int32_t n, int32_t intensity, int32_t enhanced);
 
 
 #ifdef __cplusplus
@@ -84,3 +92,8 @@ int32_t apply_vb(VBContext *vb, int16_t *pcm_in, int16_t *pcm_out, int32_t n, in
 #endif//__cplusplus
 
 #endif//__VIRTUAL_BASS_H__
+
+/**
+ * @}
+ * @}
+ */

@@ -89,11 +89,11 @@ static void CreateService(void)
 	DeviceServiceCreate();
 //	DecoderServiceCreate();
 //	AudioCoreServiceCreate();
-<<<<<<< HEAD
+
+	//wifi service
 	WifiServiceCreate(mainAppCt.msgHandle);
-=======
-	WifiServiceCreate();
->>>>>>> d4a02872d889f4a0b856006f787f29d8dcf9c89d
+	//wxcloud service
+	WxcloudServiceCreate();
 }
 
 static void ServiceCreated(uint16_t msgParams)
@@ -115,6 +115,7 @@ static void ServiceCreated(uint16_t msgParams)
 			break;
 
 		case MSG_PARAM_WIFI_SERVICE:
+			WifiServiceStart();
 			break;
 
 		case MSG_PARAM_MEDIA_SERVICE:
@@ -142,6 +143,8 @@ static void ServiceStarted(uint16_t msgParams)
 			break;
 
 		case MSG_PARAM_WIFI_SERVICE:
+			//微信云服务在wifi service running 之后再start
+			WxcloudServiceStart();
 			break;
 
 		case MSG_PARAM_MEDIA_SERVICE:
@@ -205,6 +208,43 @@ static void MainAppTaskEntrance(void * param)
 					msgSend.msgId = msgId;
 					msgSend.msgParams = NULL;
 					MessageSend(msgHandle, &msgSend);
+				}
+				break;
+
+			case MSG_WXCLOUD_EVENT:
+				{
+					MessageHandle	msgHandle;
+					MessageContext	msgSend;
+
+					DBG("[MAIN_APP]: MSG_WXCLOUD_EVENT.\n");
+
+					msgSend.msgParams = NULL;
+					msgSend.msgId = NULL;
+					switch(msg.msgParams)
+					{
+						case MSG_PARAM_PRE_SONG:
+							msgSend.msgId = MSG_WIFI_AUDIO_PRE;
+							break;
+							
+						case MSG_PARAM_NEXT_SONG:
+							msgSend.msgId = MSG_WIFI_AUDIO_NEXT;
+							break;
+							
+						case MSG_PARAM_PLAY_SONG:
+							msgSend.msgId = MSG_WIFI_AUDIO_PLAY_PAUSE;
+							break;
+
+						case MSG_PARAM_PUSH_LIST:
+							msgSend.msgId = MSG_WIFI_AUDIO_PUSH_SONG;
+							break;
+
+					}
+
+					if(msgSend.msgId)
+					{
+						msgHandle = GetWifiAudioPlayMessageHandle();
+						MessageSend(msgHandle, &msgSend);
+					}
 				}
 				break;
 		}

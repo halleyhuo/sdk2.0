@@ -24,7 +24,7 @@
 extern PLAY_RECORD *WifiaudioPlayRecord;
 
 
-
+uint8_t *GetWifiPlayUrl(void);
 
 void GetNextPreSongURL(bool UpDown);
 

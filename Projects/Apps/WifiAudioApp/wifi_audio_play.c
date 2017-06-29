@@ -36,6 +36,8 @@
 #include "audio_core_service.h"
 #include "decoder_service.h"
 
+#include "sys_app.h"
+
 /***************************************************************************************
  *
  * External defines
@@ -45,7 +47,7 @@
 #define WIFI_AUDIO_PLAY_TASK_STACK_SIZE		1024
 #define WIFI_AUDIO_PLAY_TASK_PRIO			3
 
-
+#define WIFI_THRESHOLD_LEN					(20*1024)
 
 /***************************************************************************************
  *
@@ -121,13 +123,30 @@ MessageId GetWifiAudioKeyMap(KeyValue value, KeyEvent event)
 
 static uint16_t WifiAudioSourceGetData(int16_t * buf, uint16_t sampleLen)
 {
-	return 1;
+	return GetDecodedPcmData(buf, sampleLen, 2);
 }
 
 
 static BOOL WifiAudioSinkPutData(void * buf, uint16_t len)
 {
+	if((PcmFifoGetStatus() == 1) && (PcmFifoGetRemainSamples() > 1024))
+	{
+		PcmFifoPlay();
+	}
 
+
+	if(CheckXrTx() && PcmFifoGetRemainSamples() < 1920)
+	{
+		if(GetTx())
+		{
+			if(PcmFifoIsEmpty())
+			{
+				DBG("Empty\n");
+			}
+			PcmTxTransferData((void *)buf, (void *)buf, len);
+			return TRUE;
+		}
+	}
 
 	return FALSE;
 }
@@ -222,7 +241,7 @@ static void WifiAudioPlayServicesCreate(void)
 	DecoderServiceCreate(WIFI_AUDIO_PLAY(msgHandle));
 
 	// Create wifi audio servcie
-//	WifiAudioServiceCreate(WIFI_AUDIO_PLAY(msgHandle));
+	WifiAudioServiceCreate(WIFI_AUDIO_PLAY(msgHandle));
 }
 
 static void MsgProcessServiceCreated(uint16_t msgParams)
@@ -389,8 +408,8 @@ static void MsgProcessServiceStart(uint16_t msgParams)
 			{
 				// Init & start releated services
 				WIFI_AUDIO_PLAY(state) = ServiceStateStarting;
-				WifiAudioServiceInit();
-				WifiAudioServiceStart();
+				WifiAudioServiceInit(WIFI_THRESHOLD_LEN);
+//				WifiAudioServiceStart();
 			}
 			break;
 		default:
@@ -468,18 +487,24 @@ static void MsgProcessServiceStop(uint16_t msgParams)
 	}
 }
 
+static void MsgProcessWifiDataEmpty(void)
+{
+	 DBG("MsgProcessWifiDataEmpty\n");
+}
+
 static void MsgProcessWifiDataReady(void)
 {
 	int32_t					ret;
 	AudioCorePcmParams		acPcmParams;
 	SongInfo				*songInfo;
 
+	DBG("MsgProcessWifiDataReady\n");
 
 	WIFI_AUDIO_PLAY(decoderIoType) = IO_TYPE_MEMORY;
 	WIFI_AUDIO_PLAY(decoderType) = MP3_DECODER;
 
 	// Initialize decoder
-	ret = DecoderInit(&WIFI_AUDIO_PLAY(decoderMemHandle), 
+	ret = DecoderInit(WIFI_AUDIO_PLAY(decoderMemHandle), 
 						WIFI_AUDIO_PLAY(decoderIoType), 
 						WIFI_AUDIO_PLAY(decoderType),
 						&WIFI_AUDIO_PLAY(songInfo));
@@ -499,10 +524,13 @@ static void MsgProcessWifiDataReady(void)
 	acPcmParams.pcmDataMode		= songInfo->pcm_data_mode;
 	acPcmParams.samplingRate	= songInfo->sampling_rate;
 	acPcmParams.bitRate			= songInfo->bitrate;
-	AC_MixSourcePcmParamsConfig(0, &acPcmParams);
+	AudioCoreMixSourcePcmConfig(0, &acPcmParams);
+	AudioCoreMixSourceRegister(0, WifiAudioSourceGetData);
+	AudioCoreMixSourceEnable(0);
 
-	AC_MixSourceEnable(0);
-
+	AudioCoreMixSinkRegister(0, WifiAudioSinkPutData);
+	AudioCoreMixSinkPcmConfig(0, &acPcmParams);
+	AudioCoreMixSinkEnable(0);
 	// start decoder & audio core service
 	DecoderServiceStart();
 	AudioCoreServiceStart();
@@ -512,14 +540,14 @@ static void WifitAudioPlaykEntrance(void * param)
 {
 	MessageContext		msgRecv;
 	MessageContext		msgSend;
-
+	MessageHandle		msgHandle;
 
 	// Create services
 	WifiAudioPlayServicesCreate();
 
 	while(1)
 	{
-		MessageRecv(WIFI_AUDIO_PLAY(msgHandle), &msgRecv, MAX_RECV_MSG_TIMEOUT);
+		MessageRecv(wifiAudioPlayCt.msgHandle, &msgRecv, MAX_RECV_MSG_TIMEOUT);
 
 		switch(msgRecv.msgId)
 		{
@@ -577,11 +605,31 @@ static void WifitAudioPlaykEntrance(void * param)
 				}
 				break;
 
+			case MSG_WIFI_AUDIO_SERVICE_DATA_EMPTY:
+				{
+					MsgProcessWifiDataEmpty();
+				}
+				break;
+
 			case MSG_APP_MODE_START:
 				WifiAudioPlayModeStart();
 				break;
 			case MSG_APP_MODE_STOP:
 				WifiAudioPlayModeStop();
+				break;
+
+			case MSG_WIFI_AUDIO_PUSH_SONG:
+				DBG("MSG_WIFI_AUDIO_PUSH_SONG\n");
+				{
+					uint8_t *playUrl;
+					playUrl = GetWifiPlayUrl();
+					WifiAudioServiceConnect(playUrl, 192);
+					
+					msgHandle = GetWifiAudioServiceMsgHandle();
+					msgSend.msgId		= MSG_SERVICE_START;
+					msgSend.msgParams	= NULL;
+					MessageSend(msgHandle, &msgSend);
+				}
 				break;
 
 			case MSG_WIFI_AUDIO_PLAY_PAUSE:
@@ -619,7 +667,15 @@ static void WifitAudioPlaykEntrance(void * param)
 			case MSG_WIFI_AUDIO_SEND_WX:
 				DBG("MSG_WIFI_AUDIO_SEND_WX\n");
 				break;
-			
+
+
+			case MSG_WIFI_AUDIO_DOWLOAD_START:
+				DBG("MSG_WIFI_AUDIO_DOWLOAD_START\n");
+				break;
+				
+			case MSG_WIFI_AUDIO_DOWLOAD_FINISHED:
+				DBG("MSG_WIFI_AUDIO_DOWLOAD_FINISHED\n");
+				break;
 		}
 
 	}

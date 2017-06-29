@@ -33,7 +33,7 @@
 #define DECODER_SERVICE_SIZE				1024
 #define DECODER_SERVICE_PRIO				3
 
-#define DECODER_SERVICE_TIMEOUT				1	/* 1 ms */
+#define DECODER_SERVICE_TIMEOUT				2	/* 1 ms */
 
 /***************************************************************************************
  *
@@ -43,7 +43,7 @@
 
 #define DCS_NUM_MESSAGE_QUEUE				4
 
-#define DEFAULT_DECODED_BUFFER_SIZE			(1*1024)
+#define DEFAULT_DECODED_BUFFER_SIZE			(4*1024)
 
 typedef enum
 {
@@ -117,17 +117,19 @@ static int32_t DS_Init(MessageHandle parentMsgHandle)
 {
 	memset(&decoderServiceCt, 0, sizeof(DecoderServiceContext));
 
-	DCS(parentMsgHandle) = parentMsgHandle;
+	decoderServiceCt.parentMsgHandle = parentMsgHandle;
 
-	DCS(decodedBuf).buffer = (uint8_t *)pvPortMalloc(DEFAULT_DECODED_BUFFER_SIZE);
-	DCS(decodedBuf).capacity = DEFAULT_DECODED_BUFFER_SIZE;
-	MvRingBufferInit(&DCS(decodedBuf));
+	decoderServiceCt.decodedBuf.buffer = (uint8_t *)pvPortMalloc(DEFAULT_DECODED_BUFFER_SIZE);
+	decoderServiceCt.decodedBuf.capacity = DEFAULT_DECODED_BUFFER_SIZE;
+	MvRingBufferInit(&decoderServiceCt.decodedBuf);
 	/* register message handle */
-	DCS(msgHandle) = MessageRegister(DCS_NUM_MESSAGE_QUEUE);
+	decoderServiceCt.msgHandle = MessageRegister(DCS_NUM_MESSAGE_QUEUE);
 
-	DCS(decodedBufMutex) = xSemaphoreCreateMutex();
+	decoderServiceCt.decodedBufMutex = xSemaphoreCreateMutex();
 
 	NVIC_SetPriority(DECODER_IRQn, 2);
+
+	InitXrTx();
 
 	return 0;
 }
@@ -140,17 +142,17 @@ static void DS_Deinit(void)
 	/* Send message to main app */
 	msgSend.msgId		= MSG_SERVICE_STOPPED;
 	msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
-	MessageSend(DCS(parentMsgHandle), &msgSend);
+	MessageSend(decoderServiceCt.parentMsgHandle, &msgSend);
 
-	vSemaphoreDelete(DCS(decodedBufMutex));
+	vSemaphoreDelete(decoderServiceCt.decodedBufMutex);
 
-	DCS(serviceState) = ServiceStateNone;
+	decoderServiceCt.serviceState = ServiceStateNone;
 }
 
 
 static void GetPcmBufMutex(void)
 {
-	xSemaphoreTake(DCS(decodedBufMutex) , 0xFFFFFFFF);
+	xSemaphoreTake(decoderServiceCt.decodedBufMutex , 0xFFFFFFFF);
 }
 
 static void ReleasePcmBufMutex(void)
@@ -159,7 +161,7 @@ static void ReleasePcmBufMutex(void)
 
 	if (__get_IPSR() != 0)
 	{
-		if (xSemaphoreGiveFromISR(DCS(decodedBufMutex), &taskWoken) != pdTRUE)
+		if (xSemaphoreGiveFromISR(decoderServiceCt.decodedBufMutex, &taskWoken) != pdTRUE)
 		{
 			return;
 		}
@@ -167,7 +169,7 @@ static void ReleasePcmBufMutex(void)
 	}
 	else
 	{
-		if (xSemaphoreGive(DCS(decodedBufMutex)) != pdTRUE)
+		if (xSemaphoreGive(decoderServiceCt.decodedBufMutex) != pdTRUE)
 		{
 
 		}
@@ -184,7 +186,7 @@ static int16_t SaveDecodedPcmData(uint8_t * pcmData, uint16_t pcmDataLen)
 		return -1;
 
 	GetPcmBufMutex();
-	writeDataLen = MvRingBufferWrite(&DCS(decodedBuf), (uint8_t *)pcmData, pcmDataLen);
+	writeDataLen = MvRingBufferWrite(&decoderServiceCt.decodedBuf, (uint8_t *)pcmData, pcmDataLen);
 	ReleasePcmBufMutex();
 	if(writeDataLen <= 0)
 		return -1;
@@ -195,10 +197,10 @@ static int16_t SaveDecodedPcmData(uint8_t * pcmData, uint16_t pcmDataLen)
 
 static void DecoderProcess(void)
 {
-	switch(DCS(decoderState))
+	switch(decoderServiceCt.decoderState)
 	{
 		case DecoderStateInitilized:
-			DCS(decoderState)	= DecoderStateDecoding;
+			decoderServiceCt.decoderState	= DecoderStateDecoding;
 			break;
 
 		case DecoderStateDecoding:
@@ -208,12 +210,12 @@ static void DecoderProcess(void)
 				{
 					if(is_audio_decoder_with_hardware())
 					{
-						DCS(decoderState) = DecoderStateWaitXrDone;
+						decoderServiceCt.decoderState = DecoderStateWaitXrDone;
 					}
 					else
 					{
 						ReleaseXr();
-						DCS(decoderState) = DecoderStateToSavePcmData;
+						decoderServiceCt.decoderState = DecoderStateToSavePcmData;
 					}
 				}
 				else
@@ -228,7 +230,7 @@ static void DecoderProcess(void)
 			if(audio_decoder_check_xr_done() == RT_YES)
 			{
 				audio_decoder_clear_xr_done();
-				DCS(decoderState) = DecoderStateToSavePcmData;
+				decoderServiceCt.decoderState = DecoderStateToSavePcmData;
 			}
 			break;
 
@@ -240,26 +242,26 @@ static void DecoderProcess(void)
 				params.songInfo = audio_decoder->song_info;
 
 				{
-					DCS(pcmDataSize)	= (audio_decoder->song_info->pcm_data_length)*(audio_decoder->song_info->num_channels)*2;
-					DCS(savedSize)		= 0;
-					DCS(toSavePos)		= (uint8_t *)audio_decoder->song_info->pcm0_addr;
+					decoderServiceCt.pcmDataSize	= (audio_decoder->song_info->pcm_data_length)*(audio_decoder->song_info->num_channels)*2;
+					decoderServiceCt.savedSize		= 0;
+					decoderServiceCt.toSavePos		= (uint8_t *)audio_decoder->song_info->pcm0_addr;
 
-					DCS(decoderState) = DecoderStateSavePcmData;
+					decoderServiceCt.decoderState = DecoderStateSavePcmData;
 				}
 			}
 		case DecoderStateSavePcmData:
 			{
 				int32_t		savedSize;
 
-				savedSize = SaveDecodedPcmData(DCS(toSavePos),DCS(pcmDataSize) - DCS(savedSize));
+				savedSize = SaveDecodedPcmData(decoderServiceCt.toSavePos,decoderServiceCt.pcmDataSize - decoderServiceCt.savedSize);
 
 				if(savedSize > 0)
 				{
-					DCS(savedSize) += savedSize;
-					DCS(toSavePos) += savedSize;
-					if(DCS(savedSize) == DCS(pcmDataSize))
+					decoderServiceCt.savedSize += savedSize;
+					decoderServiceCt.toSavePos += savedSize;
+					if(decoderServiceCt.savedSize == decoderServiceCt.pcmDataSize)
 					{
-						DCS(decoderState) = DecoderStateDecoding;
+						decoderServiceCt.decoderState = DecoderStateDecoding;
 					}
 				}
 				else
@@ -270,7 +272,7 @@ static void DecoderProcess(void)
 			break;
 
 		case DecoderStateDeinitilizing:
-			DCS(decoderState) = DecoderStateNone;
+			decoderServiceCt.decoderState = DecoderStateNone;
 			break;
 
 		default:
@@ -284,33 +286,33 @@ static void DecoderServiceEntrance(void * param)
 	MessageContext		msgSend;
 
 
-	DCS(serviceState) = ServiceStateReady;
+	decoderServiceCt.serviceState = ServiceStateReady;
 
 	/* Send message to parent*/
 	msgSend.msgId		= MSG_SERVICE_CREATED;
 	msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
-	MessageSend(DCS(parentMsgHandle), &msgSend);
+	MessageSend(decoderServiceCt.parentMsgHandle, &msgSend);
 
 
 	while(1)
 	{
-		MessageRecv(DCS(msgHandle), &msgRecv, DECODER_SERVICE_TIMEOUT);
+		MessageRecv(decoderServiceCt.msgHandle, &msgRecv, DECODER_SERVICE_TIMEOUT);
 		switch(msgRecv.msgId)
 		{
 			case MSG_SERVICE_START:
-				if(DCS(serviceState) == ServiceStateReady)
+				if(decoderServiceCt.serviceState == ServiceStateReady)
 				{
 					msgSend.msgId		= MSG_SERVICE_STARTED;
 					msgSend.msgParams	= MSG_PARAM_DECODER_SERVICE;
-					MessageSend(DCS(parentMsgHandle), &msgSend);
-					DCS(serviceState) = ServiceStateRunning;
+					MessageSend(decoderServiceCt.parentMsgHandle, &msgSend);
+					decoderServiceCt.serviceState = ServiceStateRunning;
 				}
 				break;
 
 			case MSG_SERVICE_STOP:
-				if(DCS(serviceState) == ServiceStateRunning)
+				if(decoderServiceCt.serviceState == ServiceStateRunning)
 				{
-					DCS(serviceState) = ServiceStateReady;
+					decoderServiceCt.serviceState = ServiceStateReady;
 				}
 
 				break;
@@ -318,7 +320,7 @@ static void DecoderServiceEntrance(void * param)
 				break;
 		}
 
-		if(DCS(serviceState) == ServiceStateRunning)
+		if(decoderServiceCt.serviceState == ServiceStateRunning)
 			DecoderProcess();
 
 	}
@@ -341,17 +343,17 @@ static void DecoderServiceEntrance(void * param)
  */
 MessageHandle GetDecoderServiceMsgHandle(void)
 {
-	return DCS(msgHandle);
+	return decoderServiceCt.msgHandle;
 }
 
 ServiceState GetDecoderServiceState(void)
 {
-	return DCS(serviceState);
+	return decoderServiceCt.serviceState;
 }
 
 MvRingBuffer * GetDecoderServiceBuf(void)
 {
-	return &DCS(decodedBuf);
+	return &decoderServiceCt.decodedBuf;
 }
 
 /**
@@ -366,7 +368,7 @@ int32_t DecoderServiceCreate(MessageHandle parentMsgHandle)
 	int32_t		ret;
 
 	DS_Init(parentMsgHandle);
-	xTaskCreate(DecoderServiceEntrance, decoderServiceName, DECODER_SERVICE_SIZE, NULL, DECODER_SERVICE_PRIO, &DCS(taskHandle));
+	xTaskCreate(DecoderServiceEntrance, decoderServiceName, DECODER_SERVICE_SIZE, NULL, DECODER_SERVICE_PRIO, &decoderServiceCt.taskHandle);
 	return ret;
 }
 
@@ -377,7 +379,7 @@ void DecoderServiceStart(void)
 
 	msgSend.msgId		= MSG_SERVICE_START;
 	msgSend.msgParams	= NULL;
-	MessageSend(DCS(msgHandle), &msgSend);
+	MessageSend(decoderServiceCt.msgHandle, &msgSend);
 }
 
 /**
@@ -393,7 +395,7 @@ void DecoderServiceStop(void)
 
 	msgSend.msgId		= MSG_SERVICE_STOP;
 	msgSend.msgParams	= NULL;
-	MessageSend(DCS(msgHandle), &msgSend);
+	MessageSend(decoderServiceCt.msgHandle, &msgSend);
 }
 
 
@@ -407,7 +409,7 @@ void DecoderServiceStop(void)
 void DecoderServiceKill(void)
 {
 	DS_Deinit();
-	vTaskDelete(DCS(taskHandle));
+	vTaskDelete(decoderServiceCt.taskHandle);
 }
 
 int16_t GetDecodedPcmData(int16_t * pcmData, uint16_t sampleLen, uint32_t channels)
@@ -417,13 +419,13 @@ int16_t GetDecodedPcmData(int16_t * pcmData, uint16_t sampleLen, uint32_t channe
 	uint32_t	getSize;
 
 	getSize = sampleLen*channels*2;
-	if(getSize > MvRingBufferVaildSize(&DCS(decodedBuf)))
+	if(getSize > MvRingBufferVaildSize(&decoderServiceCt.decodedBuf))
 	{
-		getSize = (MvRingBufferVaildSize(&DCS(decodedBuf))/(channels*2))*(channels*2);
+		getSize = (MvRingBufferVaildSize(&decoderServiceCt.decodedBuf)/(channels*2))*(channels*2);
 	}
 
 	GetPcmBufMutex();
-	dataSize = MvRingBufferRead(&DCS(decodedBuf), (uint8_t *)pcmData, getSize);
+	dataSize = MvRingBufferRead(&decoderServiceCt.decodedBuf, (uint8_t *)pcmData, getSize);
 	ReleasePcmBufMutex();
 
 	return dataSize/4;
@@ -438,10 +440,16 @@ int32_t DecoderInit(MemHandle * memHandle, int32_t ioType, int32_t decoderType, 
 	if(ret == RT_SUCCESS)
 	{
 		*songInfo = audio_decoder->song_info;
-		DCS(decoderState) = DecoderStateInitilized;
+		PcmTxSetPcmDataMode((PCM_DATA_MODE)audio_decoder->song_info->pcm_data_mode);
+		DacAdcSampleRateSet(audio_decoder->song_info->sampling_rate, USB_MODE);
+		NVIC_EnableIRQ(DECODER_IRQn);
+		decoderServiceCt.decoderState = DecoderStateInitilized;
 	}
 	else
 	{
+		int32_t		errCode;
+		errCode = audio_decoder_get_error_code();
+		DBG("AudioDecoder init err code = %d\n", errCode);
 		*songInfo = NULL;
 	}
 
@@ -450,7 +458,7 @@ int32_t DecoderInit(MemHandle * memHandle, int32_t ioType, int32_t decoderType, 
 
 void DecoderDeinit(void)
 {
-	DCS(decoderState) = DecoderStateDeinitilizing;
+	decoderServiceCt.decoderState = DecoderStateDeinitilizing;
 }
 
 /***************************************************************************************

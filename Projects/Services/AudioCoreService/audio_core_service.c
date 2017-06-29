@@ -232,9 +232,9 @@ bool AudioCoreModeSet(AudioCoreMode mode)
 	switch(mode)
 	{
 		case AUDIO_CORE_MODE_MIX:
-			ACS(acInitFunc) = AC_MixInit;
-			ACS(acDeinitFunc) = AC_MixDeinit;
-			ACS(acRunFunc) = AC_MixProcess;
+			ACS(acInitFunc) = AudioCoreMixInit;
+			ACS(acDeinitFunc) = AudioCoreMixDeinit;
+			ACS(acRunFunc) = AudioCoreMixProcess;
 			break;
 
 		case AUDIO_CORE_MODE_AEC:

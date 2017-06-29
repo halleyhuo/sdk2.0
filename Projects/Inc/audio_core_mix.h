@@ -1,34 +1,59 @@
 
 
-BOOL AC_MixInit(void);
+typedef enum
+{
+	EffectTypeVb,
+	EffectType3D
+}EffectType;
 
-BOOL AC_MixDeinit(void);
+typedef enum
+{
+	VbCmdEnDis,
+	VbCmdCutoffFreq,
+	VbCmdIntensity,
+	VbCmdEnhanced
+}EffectVbCmd;
+
+typedef enum
+{
+	ThrDimEnDis,
+	ThrDimDepth,
+	ThrDimPreGain,
+	ThrDimPostGain
+}EffectThrDimCmd;
+
+BOOL AudioCoreMixInit(void);
+
+BOOL AudioCoreMixDeinit(void);
 
 /**
  * Source related functions
  */
-BOOL AC_MixSourceGetDataRegister(AudioCoreIndex srcIndex, AudioCoreGetData getSrcData);
+BOOL AudioCoreMixSourceRegister(AudioCoreIndex srcIndex, AudioCoreGetData getSrcData);
 
-BOOL AC_MixSourceEnable(AudioCoreIndex srcIndex);
+BOOL AudioCoreMixEnable(AudioCoreIndex srcIndex);
 
-BOOL AC_MixSourceDisable(AudioCoreIndex srcIndex);
+BOOL AudioCoreMixSourceDisable(AudioCoreIndex srcIndex);
 
-BOOL AC_MixSourcePcmParamsConfig(AudioCoreIndex srcIndex, AudioCorePcmParams *pcmParams);
+BOOL AudioCoreMixSourcePcmConfig(AudioCoreIndex srcIndex, AudioCorePcmParams *pcmParams);
 
-BOOL AC_MixSourceGainConfig(AudioCoreIndex srcIndex, int16_t gain);
+BOOL AudioCoreMixSourceGainConfig(AudioCoreIndex srcIndex, int16_t gain);
 
 /**
  * Sink related functions
  */
-BOOL AC_MixSinkPutDataRegister(AudioCoreIndex sinkIndex, AudioCorePutData putSinkData);
+BOOL AudioCoreMixSinkRegister(AudioCoreIndex sinkIndex, AudioCorePutData putSinkData);
 
-BOOL AC_MixSinkEnable(AudioCoreIndex sinkIndex);
+BOOL AudioCoreMixSinkEnable(AudioCoreIndex sinkIndex);
 
-BOOL AC_MixSinkDisable(AudioCoreIndex sinkIndex);
+BOOL AudioCoreMixSinkDisable(AudioCoreIndex sinkIndex);
 
-BOOL AC_MixSinkPcmParamsConfig(AudioCoreIndex sinkIndex, AudioCorePcmParams *pcmParams);
+BOOL AudioCoreMixSinkPcmConfig(AudioCoreIndex sinkIndex, AudioCorePcmParams *pcmParams);
 
-BOOL AC_MixSinkGainConfig(AudioCoreIndex sinkIndex, int16_t gain);
+BOOL AudioCoreMixSinkGainConfig(AudioCoreIndex sinkIndex, int16_t gain);
 
 
-void AC_MixProcess(void);
+uint32_t AudioCoreMixPostEffectConfig(EffectType effectType, uint32_t cmd, uint32_t param);
+
+
+void AudioCoreMixProcess(void);

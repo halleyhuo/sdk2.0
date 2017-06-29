@@ -7,6 +7,10 @@
 #include "chip_info.h"
 #include "app_config.h"
 
+#include "audio_core_mix.h"
+#include "virtual_bass.h"
+#include "three_d.h"
+
 /***************************************************************************************
  *
  * External defines
@@ -51,15 +55,41 @@ typedef struct _MixAcSink
 	int16_t				gain;
 }MixAcSink;
 
+typedef struct _VbEffect
+{
+	VBContext			vbContext;
+	BOOL				enable;
+	uint32_t			cutoffFreq;
+	uint32_t			intensity;
+	uint32_t			enhanced;
+}VbEffect;
+
+typedef struct _ThrDimEffect
+{
+	ThreeDContext		thrDimContext;
+	BOOL				enable;
+	uint32_t			depth;
+	uint32_t			preGain;
+	uint32_t			postGain;
+}ThrDimEffect;
+
 typedef struct _MixAcContext
 {
 	MixAcSource			mixSource[MAX_SOURCE_NUM];
 	MixAcSink			mixSink[MAX_SINK_NUM];
 
 	MixState			mixState;
+	AudioCorePcmParams	mixedPcmParams;
 	uint32_t			mixedSampleLen;
-	uint8_t				*mixedBuf;
+	int16_t				*mixedBuf;
 
+	// VB
+	BOOL				vbInited;
+	VbEffect			vbEffect;
+
+	// 3D
+	BOOL				thrDimInited;
+	ThrDimEffect		thrDimEffect;
 }MixAcContext;
 
 
@@ -93,8 +123,8 @@ static BOOL MixGetAndPreProcess(void)
 			if(mixAudioCore.mixSource[i].source.funcGetData)
 			{
 				mixAudioCore.mixSource[i].validSampleLen = mixAudioCore.mixSource[i].source.funcGetData(
-															mixAudioCore.mixSource[i].sourceBuf, 
-															DEFAULT_MIX_SRC_SAMPLE_LEN);
+																				mixAudioCore.mixSource[i].sourceBuf, 
+																				DEFAULT_MIX_SRC_SAMPLE_LEN);
 
 				/*
 				 * TO DO : pre-process here
@@ -113,14 +143,137 @@ static BOOL MixGetAndPreProcess(void)
 	return TRUE;
 }
 
-static bool MixProcess(void)
+static uint32_t EffectVbParams(uint32_t cmd, uint32_t param)
+{
+	switch(cmd)
+	{
+		case VbCmdEnDis:
+			if(param == 0)
+			{
+				mixAudioCore.vbEffect.enable = FALSE;
+			}
+			else
+			{
+				mixAudioCore.vbEffect.enable = TRUE;
+			}
+			break;
+
+		case VbCmdCutoffFreq:
+			mixAudioCore.vbEffect.cutoffFreq = param;
+			mixAudioCore.vbInited = FALSE;
+			break;
+
+		case VbCmdIntensity:
+			mixAudioCore.vbEffect.intensity = param;
+			break;
+
+		case VbCmdEnhanced:
+			mixAudioCore.vbEffect.enhanced = param;
+			break;
+
+		default:
+			break;
+	}
+}
+
+static uint32_t Effect3DParams(uint32_t cmd, uint32_t param)
+{
+	switch(cmd)
+	{
+		case ThrDimEnDis:
+			if(param == 0)
+			{
+				mixAudioCore.thrDimEffect.enable = FALSE;
+			}
+			else
+			{
+				mixAudioCore.thrDimEffect.enable = TRUE;
+			}
+			break;
+
+		case ThrDimDepth:
+			mixAudioCore.thrDimEffect.depth = param;
+			break;
+
+		case ThrDimPreGain:
+			mixAudioCore.thrDimEffect.preGain = param;
+			break;
+
+		case ThrDimPostGain:
+			mixAudioCore.thrDimEffect.postGain = param;
+			break;
+
+		default:
+			break;
+	}
+}
+
+static void MixPostProcess(void)
+{
+	if(mixAudioCore.vbEffect.enable)
+	{
+		if(!mixAudioCore.vbInited)
+		{
+			vb_init(&mixAudioCore.vbEffect.vbContext,
+					mixAudioCore.mixedPcmParams.channelNums,
+					mixAudioCore.mixedPcmParams.samplingRate,
+					mixAudioCore.vbEffect.cutoffFreq);
+
+			mixAudioCore.vbInited = TRUE;
+		}
+
+		vb_apply(&mixAudioCore.vbEffect.vbContext,
+				mixAudioCore.mixedBuf,
+				mixAudioCore.mixedBuf,
+				mixAudioCore.mixedSampleLen,
+				mixAudioCore.vbEffect.intensity,
+				mixAudioCore.vbEffect.enhanced);
+	}
+
+	if(mixAudioCore.thrDimEffect.enable)
+	{
+		if(!mixAudioCore.thrDimInited)
+		{
+			int32_t		ret;
+			ret = init_3d(&mixAudioCore.thrDimEffect.thrDimContext,
+						mixAudioCore.mixedPcmParams.channelNums,
+						mixAudioCore.mixedPcmParams.samplingRate);
+
+			if(ret == THREE_D_ERROR_OK)
+			{
+				mixAudioCore.thrDimInited = TRUE;
+			}
+			else
+			{
+				mixAudioCore.thrDimInited = FALSE;
+			}
+		}
+
+		if(mixAudioCore.thrDimInited && mixAudioCore.mixedPcmParams.channelNums == 2)
+		{
+			apply_3d(&mixAudioCore.thrDimEffect.thrDimContext,
+					mixAudioCore.mixedBuf,
+					mixAudioCore.mixedBuf,
+					mixAudioCore.mixedSampleLen,
+					mixAudioCore.thrDimEffect.depth,
+					mixAudioCore.thrDimEffect.preGain,
+					mixAudioCore.thrDimEffect.postGain);
+		}
+	}
+}
+
+static BOOL MixProcess(void)
 {
 	uint8_t					index;
 
 
+	if(!CheckTx())
+		return FALSE;
+
 	/*Mix data*/
 	mixAudioCore.mixedSampleLen = 0;
 	memset(mixAudioCore.mixedBuf, 0, MIXED_BUFFER_LEN);
+
 
 	for(index = 0; index < MAX_SOURCE_NUM; index++)
 	{
@@ -140,14 +293,15 @@ static bool MixProcess(void)
 						{
 							uint16_t		i;
 							int16_t			*srcBuf;
+							int16_t 		*mixedBuf;
 
 							srcBuf = mixAudioCore.mixSource[index].sourceBuf;
+							mixedBuf = mixAudioCore.mixedBuf;
+
 							for(i = 0; i < sampleLen; i++)
 							{
-								mixAudioCore.mixedBuf[i * 2] = 
-											__ssat(mixAudioCore.mixedBuf[i * 2] + (int16_t)(srcBuf[i * 2]), 16);
-								mixAudioCore.mixedBuf[i*2 + 1] = 
-											__ssat(mixAudioCore.mixedBuf[i * 2 + 1] + (int16_t)(srcBuf[i * 2 + 1]), 16);
+								mixedBuf[i * 2]		= __ssat(mixedBuf[i * 2 + 0] + (int16_t)(srcBuf[i * 2]), 16);
+								mixedBuf[i * 2 + 1]	= __ssat(mixedBuf[i * 2 + 1] + (int16_t)(srcBuf[i * 2 + 1]), 16);
 							}
 						}
 						break;
@@ -164,7 +318,7 @@ static bool MixProcess(void)
 
 	/* TO DO : Post-Process */
 	// Add Post-Process here	
-	// PostProcess();
+//	MixPostProcess();
 
 	return TRUE;
 }
@@ -237,7 +391,7 @@ static BOOL MixPut(void)
  */
 
 
-BOOL AC_MixInit(void)
+BOOL AudioCoreMixInit(void)
 {
 	uint8_t			i;
 
@@ -253,7 +407,7 @@ BOOL AC_MixInit(void)
 	}
 
 	/* Allocate mixed buffer */
-	mixAudioCore.mixedBuf = (uint8_t *)(VMEM_ADDR + AUDIOC_CORE_TRANSFER_OFFSET);
+	mixAudioCore.mixedBuf = (int16_t *)(VMEM_ADDR + AUDIOC_CORE_TRANSFER_OFFSET);
 
 	if(mixAudioCore.mixedBuf == NULL)
 		return FALSE;
@@ -261,7 +415,7 @@ BOOL AC_MixInit(void)
 	return TRUE;
 }
 
-BOOL AC_MixDeinit(void)
+BOOL AudioCoreMixDeinit(void)
 {
 	uint8_t			i;
 
@@ -288,7 +442,7 @@ BOOL AC_MixDeinit(void)
 /**
  * Source related functions
  */
-BOOL AC_MixSourceGetDataRegister(AudioCoreIndex srcIndex, AudioCoreGetData getSrcData)
+BOOL AudioCoreMixSourceRegister(AudioCoreIndex srcIndex, AudioCoreGetData getSrcData)
 {
 	if(srcIndex >= MAX_SOURCE_NUM)
 		return FALSE;
@@ -298,7 +452,7 @@ BOOL AC_MixSourceGetDataRegister(AudioCoreIndex srcIndex, AudioCoreGetData getSr
 	return TRUE;
 }
 
-BOOL AC_MixSourceEnable(AudioCoreIndex srcIndex)
+BOOL AudioCoreMixSourceEnable(AudioCoreIndex srcIndex)
 {
 	if(srcIndex >= MAX_SOURCE_NUM)
 		return FALSE;
@@ -306,7 +460,7 @@ BOOL AC_MixSourceEnable(AudioCoreIndex srcIndex)
 	mixAudioCore.mixSource[srcIndex].source.enable = TRUE;
 }
 
-BOOL AC_MixSourceDisable(AudioCoreIndex srcIndex)
+BOOL AudioCoreMixSourceDisable(AudioCoreIndex srcIndex)
 {
 	if(srcIndex >= MAX_SOURCE_NUM)
 		return FALSE;
@@ -314,7 +468,7 @@ BOOL AC_MixSourceDisable(AudioCoreIndex srcIndex)
 	mixAudioCore.mixSource[srcIndex].source.enable = FALSE;
 }
 
-BOOL AC_MixSourcePcmParamsConfig(AudioCoreIndex srcIndex, AudioCorePcmParams *pcmParams)
+BOOL AudioCoreMixSourcePcmConfig(AudioCoreIndex srcIndex, AudioCorePcmParams *pcmParams)
 {
 	if(srcIndex >= MAX_SOURCE_NUM)
 		return FALSE;
@@ -324,7 +478,7 @@ BOOL AC_MixSourcePcmParamsConfig(AudioCoreIndex srcIndex, AudioCorePcmParams *pc
 	return TRUE;
 }
 
-BOOL AC_MixSourceGainConfig(AudioCoreIndex srcIndex, int16_t gain)
+BOOL AudioCoreMixSourceGainConfig(AudioCoreIndex srcIndex, int16_t gain)
 {
 	if(srcIndex >= MAX_SOURCE_NUM)
 		return FALSE;
@@ -335,7 +489,7 @@ BOOL AC_MixSourceGainConfig(AudioCoreIndex srcIndex, int16_t gain)
 /**
  * Sink related functions
  */
-BOOL AC_MixSinkPutDataRegister(AudioCoreIndex sinkIndex, AudioCorePutData putSinkData)
+BOOL AudioCoreMixSinkRegister(AudioCoreIndex sinkIndex, AudioCorePutData putSinkData)
 {
 	if(sinkIndex >= MAX_SINK_NUM)
 		return FALSE;
@@ -343,7 +497,7 @@ BOOL AC_MixSinkPutDataRegister(AudioCoreIndex sinkIndex, AudioCorePutData putSin
 	mixAudioCore.mixSink[sinkIndex].sink.funcPutData = putSinkData;
 }
 
-BOOL AC_MixSinkEnable(AudioCoreIndex sinkIndex)
+BOOL AudioCoreMixSinkEnable(AudioCoreIndex sinkIndex)
 {
 	if(sinkIndex >= MAX_SINK_NUM)
 		return FALSE;
@@ -351,7 +505,7 @@ BOOL AC_MixSinkEnable(AudioCoreIndex sinkIndex)
 	mixAudioCore.mixSink[sinkIndex].sink.enable = TRUE;
 }
 
-BOOL AC_MixSinkDisable(AudioCoreIndex sinkIndex)
+BOOL AudioCoreMixSinkDisable(AudioCoreIndex sinkIndex)
 {
 	if(sinkIndex >= MAX_SINK_NUM)
 		return FALSE;
@@ -359,7 +513,7 @@ BOOL AC_MixSinkDisable(AudioCoreIndex sinkIndex)
 	mixAudioCore.mixSink[sinkIndex].sink.enable = FALSE;
 }
 
-BOOL AC_MixSinkPcmParamsConfig(AudioCoreIndex sinkIndex, AudioCorePcmParams *pcmParams)
+BOOL AudioCoreMixSinkPcmConfig(AudioCoreIndex sinkIndex, AudioCorePcmParams *pcmParams)
 {
 	if(sinkIndex >= MAX_SINK_NUM)
 		return FALSE;
@@ -369,7 +523,7 @@ BOOL AC_MixSinkPcmParamsConfig(AudioCoreIndex sinkIndex, AudioCorePcmParams *pcm
 	return TRUE;
 }
 
-BOOL AC_MixSinkGainConfig(AudioCoreIndex sinkIndex, int16_t gain)
+BOOL AudioCoreMixSinkGainConfig(AudioCoreIndex sinkIndex, int16_t gain)
 {
 	if(sinkIndex >= MAX_SINK_NUM)
 		return FALSE;
@@ -378,7 +532,24 @@ BOOL AC_MixSinkGainConfig(AudioCoreIndex sinkIndex, int16_t gain)
 }
 
 
-void AC_MixProcess(void)
+uint32_t AudioCoreMixPostEffectConfig(EffectType effectType, uint32_t cmd, uint32_t param)
+{
+	switch(effectType)
+	{
+		case EffectTypeVb:
+			EffectVbParams(cmd, param);
+			break;
+
+		case EffectType3D:
+			Effect3DParams(cmd, param);
+			break;
+
+		default:
+			break;
+	}
+}
+
+void AudioCoreMixProcess(void)
 {
 	BOOL		ret;
 
